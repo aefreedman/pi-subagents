@@ -1,0 +1,37 @@
+{
+  "name": "@aefree/pi-subagents",
+  "private": true,
+  "version": "0.2.1",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "scripts": {
+    "test": "npx --yes tsx tests/agent-discovery.test.ts"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
+  },
+  "description": "Pi tools and package support for subagent orchestration.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/aefreedman/pi-subagents.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aefreedman/pi-subagents/issues"
+  },
+  "homepage": "https://github.com/aefreedman/pi-subagents#readme"
+}
