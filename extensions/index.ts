@@ -333,10 +333,11 @@ function renderRunningAggregateText(
 	theme: any,
 	icon: string,
 ): string {
-	const sample = results.slice(0, 3).map((r) => r.agent).join(", ");
-	const extra = results.length > 3 ? ` (+${results.length - 3} more)` : "";
+	const runningAgents = results.filter((r) => r.exitCode === -1).map((r) => r.agent);
+	const completedAgents = results.filter((r) => r.exitCode !== -1).map((r) => r.agent);
 	let text = `${icon} ${theme.fg("toolTitle", theme.bold(`${modeLabel} `))}${theme.fg("accent", status)}`;
-	if (sample) text += `\n${theme.fg("muted", `Agents: ${sample}${extra}`)}`;
+	if (runningAgents.length > 0) text += `\n${theme.fg("muted", "Running: ")}${theme.fg("accent", runningAgents.join(", "))}`;
+	if (completedAgents.length > 0) text += `\n${theme.fg("muted", `Done: ${completedAgents.join(", ")}`)}`;
 	text += `\n${theme.fg("warning", "Running… live details hidden to keep layout stable.")}`;
 	return text;
 }
