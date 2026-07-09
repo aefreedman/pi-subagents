@@ -121,6 +121,28 @@ function formatUsageStats(
 	return parts.join(" ");
 }
 
+function formatDurationCompact(ms: number): string {
+	const seconds = Math.max(0, Math.floor(ms / 1000));
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	const remainingSeconds = seconds % 60;
+	if (hours > 0) return `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+	return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function formatModelTag(model?: string): string {
+	if (!model) return "";
+	const id = model.toLowerCase();
+	if (id.includes("sonnet")) return "sonnet";
+	if (id.includes("opus")) return "opus";
+	if (id.includes("haiku")) return "haiku";
+	if (id.includes("gpt-5")) return "gpt-5";
+	if (id.includes("gpt-4")) return "gpt-4";
+	if (id.includes("codex")) return "codex";
+	const compact = model.split(/[/:]/).pop() ?? model;
+	return compact.length > 16 ? `${compact.slice(0, 15)}…` : compact;
+}
+
 function formatToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
@@ -210,6 +232,9 @@ interface SingleResult {
 	stderr: string;
 	usage: UsageStats;
 	model?: string;
+	startedAt?: number;
+	endedAt?: number;
+	durationMs?: number;
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
@@ -281,6 +306,57 @@ function getDisplayItems(messages: Message[]): DisplayItem[] {
 	return items;
 }
 
+function countToolCalls(messages: Message[]): number {
+	let count = 0;
+	for (const msg of messages) {
+		if (msg.role !== "assistant") continue;
+		for (const part of msg.content) {
+			if (part.type === "toolCall") count++;
+		}
+	}
+	return count;
+}
+
+function getResultDurationMs(result: SingleResult): number | undefined {
+	if (result.durationMs !== undefined) return result.durationMs;
+	if (result.startedAt !== undefined) return Math.max(0, Date.now() - result.startedAt);
+	return undefined;
+}
+
+function getLatestCacheHitRate(messages: Message[]): number | undefined {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (msg.role !== "assistant" || !msg.usage) continue;
+		const cacheRead = msg.usage.cacheRead || 0;
+		const promptTokens = (msg.usage.input || 0) + cacheRead + (msg.usage.cacheWrite || 0);
+		return promptTokens > 0 ? (cacheRead / promptTokens) * 100 : undefined;
+	}
+	return undefined;
+}
+
+function formatAgentPerformanceStats(result: SingleResult): string {
+	const parts: string[] = [];
+	const duration = getResultDurationMs(result);
+	const usage = result.usage;
+	const toolCalls = countToolCalls(result.messages);
+	const cacheHitRate = getLatestCacheHitRate(result.messages);
+	const modelTag = formatModelTag(result.model);
+
+	if (duration !== undefined) parts.push(formatDurationCompact(duration));
+	if (usage.turns) parts.push(`${usage.turns}t`);
+	if (toolCalls > 0) parts.push(`${toolCalls} tools`);
+	if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
+	if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
+	if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
+	if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
+	if ((usage.cacheRead > 0 || usage.cacheWrite > 0) && cacheHitRate !== undefined) parts.push(`CH${cacheHitRate.toFixed(1)}%`);
+	if (usage.cost) parts.push(`$${usage.cost.toFixed(3)}`);
+	if (usage.contextTokens) parts.push(`ctx${formatTokens(usage.contextTokens)}`);
+	if (modelTag) parts.push(`(${modelTag})`);
+
+	return parts.join(" ") || (result.exitCode === -1 ? "starting" : "no usage");
+}
+
 function renderDisplayItemsText(items: DisplayItem[], theme: any, expanded: boolean, limit?: number): string {
 	const toShow = limit ? items.slice(-limit) : items;
 	const skipped = limit && items.length > limit ? items.length - limit : 0;
@@ -319,10 +395,10 @@ function shortenPreview(text: string, maxLength = 120): string {
 function renderRunningSingleText(result: SingleResult, theme: any, icon: string): string {
 	const header = buildSingleResultHeader(result, theme, icon);
 	const task = shortenPreview(result.task, 100);
-	const usageStr = formatUsageStats(result.usage, result.model);
+	const stats = formatAgentPerformanceStats(result);
 	let text = `${header}\n${theme.fg("muted", "Task: ")}${theme.fg("dim", task || "(no task)")}`;
+	text += `\n${theme.fg("muted", "Stats: ")}${theme.fg("dim", stats)}`;
 	text += `\n${theme.fg("warning", "Running… live details hidden to keep layout stable.")}`;
-	if (usageStr) text += `\n${theme.fg("dim", usageStr)}`;
 	return text;
 }
 
@@ -333,11 +409,17 @@ function renderRunningAggregateText(
 	theme: any,
 	icon: string,
 ): string {
-	const runningAgents = results.filter((r) => r.exitCode === -1).map((r) => r.agent);
-	const completedAgents = results.filter((r) => r.exitCode !== -1).map((r) => r.agent);
 	let text = `${icon} ${theme.fg("toolTitle", theme.bold(`${modeLabel} `))}${theme.fg("accent", status)}`;
-	if (runningAgents.length > 0) text += `\n${theme.fg("muted", "Running: ")}${theme.fg("accent", runningAgents.join(", "))}`;
-	if (completedAgents.length > 0) text += `\n${theme.fg("muted", `Done: ${completedAgents.join(", ")}`)}`;
+	const agentNameWidth = Math.max(5, ...results.map((r) => r.agent.length));
+	const statusWidth = 7;
+	for (const r of results) {
+		const rIcon =
+			r.exitCode === -1 ? theme.fg("warning", "↻") : didResultFail(r) ? theme.fg("error", "✗") : theme.fg("success", "✓");
+		const label = r.exitCode === -1 ? "running" : didResultFail(r) ? "failed" : "done";
+		const paddedAgent = r.agent.padEnd(agentNameWidth);
+		const paddedLabel = label.padEnd(statusWidth);
+		text += `\n${rIcon} ${theme.fg("accent", paddedAgent)}  ${theme.fg("muted", `${paddedLabel}  ${formatAgentPerformanceStats(r)}`)}`;
+	}
 	text += `\n${theme.fg("warning", "Running… live details hidden to keep layout stable.")}`;
 	return text;
 }
@@ -428,6 +510,9 @@ async function runSingleAgent(
 			messages: [],
 			stderr: `Unknown agent: "${agentName}". Available agents: ${available}.`,
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+			startedAt: Date.now(),
+			endedAt: Date.now(),
+			durationMs: 0,
 			step,
 		};
 	}
@@ -451,6 +536,7 @@ async function runSingleAgent(
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 		model: agent.model,
+		startedAt: Date.now(),
 		step,
 		agentClass: agent.agentClass,
 		outputFormat: agent.outputFormat,
@@ -605,6 +691,8 @@ async function runSingleAgent(
 		});
 
 		currentResult.exitCode = exitCode;
+		currentResult.endedAt = Date.now();
+		currentResult.durationMs = currentResult.endedAt - (currentResult.startedAt ?? currentResult.endedAt);
 		stopSpinnerRefresh();
 		if (wasAborted) throw new Error("Subagent was aborted");
 
@@ -869,6 +957,7 @@ export default function (pi: ExtensionAPI) {
 						messages: [],
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+						startedAt: Date.now(),
 					};
 				}
 
@@ -1029,6 +1118,7 @@ export default function (pi: ExtensionAPI) {
 					container.addChild(new Spacer(1));
 					container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
 					container.addChild(new Text(theme.fg("dim", r.task), 0, 0));
+					container.addChild(new Text(theme.fg("muted", "Stats: ") + theme.fg("dim", formatAgentPerformanceStats(r)), 0, 0));
 					container.addChild(new Spacer(1));
 					container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
 					if (displayItems.length === 0 && !finalOutput) {
@@ -1037,23 +1127,17 @@ export default function (pi: ExtensionAPI) {
 						appendToolCallItems(container, displayItems, theme);
 						appendFinalOutput(container, finalOutput, mdTheme);
 					}
-					const usageStr = formatUsageStats(r.usage, r.model);
-					if (usageStr) {
-						container.addChild(new Spacer(1));
-						container.addChild(new Text(theme.fg("dim", usageStr), 0, 0));
-					}
 					return container;
 				}
 
 				let text = buildSingleResultHeader(r, theme, icon);
+				text += `\n${theme.fg("muted", "Stats: ")}${theme.fg("dim", formatAgentPerformanceStats(r))}`;
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 				else {
 					text += `\n${renderDisplayItemsText(displayItems, theme, expanded, COLLAPSED_ITEM_COUNT)}`;
 					if (displayItems.length > COLLAPSED_ITEM_COUNT) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
-				const usageStr = formatUsageStats(r.usage, r.model);
-				if (usageStr) text += `\n${theme.fg("dim", usageStr)}`;
 				return new Text(text, 0, 0);
 			}
 
@@ -1113,11 +1197,9 @@ export default function (pi: ExtensionAPI) {
 							),
 						);
 						container.addChild(new Text(theme.fg("muted", "Task: ") + theme.fg("dim", r.task), 0, 0));
+						container.addChild(new Text(theme.fg("muted", "Stats: ") + theme.fg("dim", formatAgentPerformanceStats(r)), 0, 0));
 						appendToolCallItems(container, displayItems, theme);
 						appendFinalOutput(container, finalOutput, mdTheme);
-
-						const stepUsage = formatUsageStats(r.usage, r.model);
-						if (stepUsage) container.addChild(new Text(theme.fg("dim", stepUsage), 0, 0));
 					}
 
 					const usageStr = formatUsageStats(aggregateUsage(details.results));
@@ -1138,6 +1220,7 @@ export default function (pi: ExtensionAPI) {
 					const rIcon = didResultFail(r) ? theme.fg("error", "✗") : theme.fg("success", "✓");
 					const displayItems = getDisplayItems(r.messages);
 					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)} ${rIcon}`;
+					text += `\n${theme.fg("muted", "Stats: ")}${theme.fg("dim", formatAgentPerformanceStats(r))}`;
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItemsText(displayItems, theme, expanded, 5)}`;
 				}
@@ -1181,11 +1264,9 @@ export default function (pi: ExtensionAPI) {
 							new Text(`${theme.fg("muted", "─── ") + theme.fg("accent", r.agent)} ${rIcon}`, 0, 0),
 						);
 						container.addChild(new Text(theme.fg("muted", "Task: ") + theme.fg("dim", r.task), 0, 0));
+						container.addChild(new Text(theme.fg("muted", "Stats: ") + theme.fg("dim", formatAgentPerformanceStats(r)), 0, 0));
 						appendToolCallItems(container, displayItems, theme);
 						appendFinalOutput(container, finalOutput, mdTheme);
-
-						const taskUsage = formatUsageStats(r.usage, r.model);
-						if (taskUsage) container.addChild(new Text(theme.fg("dim", taskUsage), 0, 0));
 					}
 
 					const usageStr = formatUsageStats(aggregateUsage(details.results));
@@ -1206,6 +1287,7 @@ export default function (pi: ExtensionAPI) {
 					const rIcon = didResultFail(r) ? theme.fg("error", "✗") : theme.fg("success", "✓");
 					const displayItems = getDisplayItems(r.messages);
 					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)} ${rIcon}`;
+					text += `\n${theme.fg("muted", "Stats: ")}${theme.fg("dim", formatAgentPerformanceStats(r))}`;
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItemsText(displayItems, theme, expanded, 5)}`;
 				}
