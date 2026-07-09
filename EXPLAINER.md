@@ -129,6 +129,8 @@ strictness: high
 
 If either is missing, the file is ignored for discovery.
 
+Discovery remains permissive for otherwise valid agents, but records warnings for unsupported top-level fields and for empty or malformed `tools` declarations. `subagent_list` appends a compact warning summary and includes the complete structured warnings in its result details. Malformed tool maps are not forwarded as invalid CLI tool names.
+
 ### Optional fields
 
 - `tools`
@@ -222,6 +224,8 @@ The packet currently includes sections like:
 - `Response Expectations`
 - `Assigned Task`
 
+For an agent discovered from a registered package, the specialist metadata also includes the agent package root. This lets the delegated worker locate package-owned references or other on-demand assets without embedding them into every agent prompt.
+
 That structure makes the child prompt more consistent and easier to debug.
 
 ## Runtime flow
@@ -242,7 +246,7 @@ Current runtime policy:
 
 ### 2. Package discovers candidate agents
 
-`discoverAgents()` loads agents from the configured scope.
+`discoverAgents()` loads agents from the configured scope and collects non-fatal frontmatter diagnostics. Unsupported fields and empty or malformed tool declarations remain visible through `subagent_list` instead of silently implying runtime support.
 
 If project agents are requested and UI is available, the package can ask for confirmation before running project-controlled agents.
 

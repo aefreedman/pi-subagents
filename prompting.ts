@@ -140,6 +140,7 @@ export function buildDelegationPacket(input: DelegationPromptInput): string {
 		`- Name: ${input.agent.name}`,
 		`- Source: ${input.agent.source}`,
 		...(input.agent.agentClass ? [`- Class: ${input.agent.agentClass}`] : []),
+		...(input.agent.packageRoot ? [`- Agent package root: ${input.agent.packageRoot}`] : []),
 		`- Summary: ${summary}`,
 	];
 

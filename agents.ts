@@ -18,6 +18,21 @@ export type AgentSourceDetail =
 export type AgentStrictness = "low" | "medium" | "high" | string;
 export type AgentOutputFormat = "text" | "markdown_sections" | "json" | string;
 export type AgentClass = "research" | "review" | "workflow" | "planning" | "implementation" | string;
+export type AgentDiscoveryWarningCode =
+	| "unsupported-frontmatter-fields"
+	| "empty-tools-declaration"
+	| "malformed-tools-declaration";
+
+export interface AgentDiscoveryWarning {
+	code: AgentDiscoveryWarningCode;
+	message: string;
+	filePath: string;
+	agentName: string;
+	source: AgentSource;
+	sourceDetail: AgentSourceDetail;
+	packageName?: string;
+	fields?: string[];
+}
 
 export interface AgentConfig {
 	name: string;
@@ -39,6 +54,7 @@ export interface AgentConfig {
 
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
+	warnings: AgentDiscoveryWarning[];
 	projectAgentsDir: string | null;
 	projectConfigAgentDirs: string[];
 	registeredPackageAgentDirs: RegisteredPackageAgentDir[];
@@ -86,7 +102,9 @@ function getDefaultAgentDir(): string {
 	return path.join(os.homedir(), ".pi", "agent");
 }
 
-function parseFrontmatter<T extends Record<string, unknown>>(content: string): { frontmatter: T; body: string } {
+function parseFrontmatter<T extends Record<string, unknown>>(
+	content: string,
+): { frontmatter: T; body: string; rawFrontmatter?: string } {
 	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
 	if (!match) return { frontmatter: {} as T, body: content };
 
@@ -125,7 +143,7 @@ function parseFrontmatter<T extends Record<string, unknown>>(content: string): {
 		}
 	}
 
-	return { frontmatter: frontmatter as T, body: content.slice(match[0].length) };
+	return { frontmatter: frontmatter as T, body: content.slice(match[0].length), rawFrontmatter: match[1] };
 }
 
 function walkMarkdownFiles(dir: string): string[] {
@@ -174,12 +192,96 @@ function parseStringList(raw: unknown): string[] | undefined {
 	const values = Array.isArray(raw)
 		? raw.map((value) => String(value).trim())
 		: typeof raw === "string"
-			? raw
-				.split(/\r?\n|,/)
-				.map((value) => value.replace(/^[-*]\s*/, "").trim())
+			? (() => {
+					const trimmed = raw.trim();
+					const listValue = trimmed.startsWith("[") && trimmed.endsWith("]") ? trimmed.slice(1, -1) : trimmed;
+					return listValue
+						.split(/\r?\n|,/)
+						.map((value) => value.replace(/^[-*]\s*/, "").trim())
+						.map((value) =>
+							(value.startsWith('"') && value.endsWith('"')) ||
+							(value.startsWith("'") && value.endsWith("'"))
+								? value.slice(1, -1).trim()
+								: value,
+						);
+				})()
 			: [];
 	const filtered = values.filter(Boolean);
 	return filtered.length > 0 ? filtered : undefined;
+}
+
+const SUPPORTED_FRONTMATTER_FIELDS = new Set([
+	"name",
+	"description",
+	"tools",
+	"model",
+	"class",
+	"agent_class",
+	"output_format",
+	"outputFormat",
+	"required_sections",
+	"requiredSections",
+	"strictness",
+]);
+
+type ToolsDeclarationIssue = {
+	code: "empty-tools-declaration" | "malformed-tools-declaration";
+	message: string;
+};
+
+function parseToolsDeclaration(
+	rawFrontmatter: string | undefined,
+	rawTools: unknown,
+): { tools?: string[]; issue?: ToolsDeclarationIssue } {
+	const tools = parseStringList(rawTools);
+	if (!rawFrontmatter) return { tools };
+	const lines = rawFrontmatter.split(/\r?\n/);
+	const declarationIndex = lines.findIndex((line) => /^tools\s*:/.test(line));
+	if (declarationIndex < 0) return { tools };
+
+	const declaration = lines[declarationIndex].match(/^tools\s*:\s*(.*)$/);
+	const scalar = declaration?.[1]?.trim() ?? "";
+	if (scalar) {
+		if (scalar === "[]" || scalar === "''" || scalar === '\"\"' || !tools) {
+			return { issue: { code: "empty-tools-declaration", message: "Tools declaration is empty." } };
+		}
+		if (
+			scalar.startsWith("{") ||
+			scalar.endsWith("}") ||
+			(scalar.startsWith("[") && !scalar.endsWith("]")) ||
+			(!scalar.startsWith("[") && scalar.endsWith("]"))
+		) {
+			return { issue: { code: "malformed-tools-declaration", message: "Tools declaration is malformed." } };
+		}
+		return { tools };
+	}
+
+	const continuation: string[] = [];
+	for (let index = declarationIndex + 1; index < lines.length; index++) {
+		const line = lines[index];
+		if (/^[A-Za-z0-9_-]+\s*:/.test(line)) break;
+		if (line.trim() && !line.trimStart().startsWith("#")) continuation.push(line);
+	}
+	if (continuation.length === 0) {
+		return { issue: { code: "empty-tools-declaration", message: "Tools declaration is empty." } };
+	}
+	if (continuation.some((line) => !/^\s+-\s+\S/.test(line))) {
+		return {
+			issue: {
+				code: "malformed-tools-declaration",
+				message: "Tools declaration must be a comma-separated value, inline list, or dash list.",
+			},
+		};
+	}
+	if (!tools) {
+		return { issue: { code: "empty-tools-declaration", message: "Tools declaration is empty." } };
+	}
+	return { tools };
+}
+
+interface LoadedAgents {
+	agents: AgentConfig[];
+	warnings: AgentDiscoveryWarning[];
 }
 
 function inferAgentClass(filePath: string, explicitClass?: string): AgentClass | undefined {
@@ -198,8 +300,9 @@ function loadAgentsFromDirRecursive(
 	source: AgentSource,
 	sourceDetail: AgentSourceDetail,
 	meta?: { packageName?: string; packageRoot?: string; discoveredFrom?: string },
-): AgentConfig[] {
+): LoadedAgents {
 	const agents: AgentConfig[] = [];
+	const warnings: AgentDiscoveryWarning[] = [];
 
 	for (const filePath of walkMarkdownFiles(dir)) {
 		let content: string;
@@ -209,17 +312,38 @@ function loadAgentsFromDirRecursive(
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, unknown>>(content);
+		const { frontmatter, body, rawFrontmatter } = parseFrontmatter<Record<string, unknown>>(content);
 		const name = normalizeString(frontmatter.name);
 		const description = normalizeString(frontmatter.description);
 		if (!name || !description) continue;
+
+		const warningBase = {
+			filePath,
+			agentName: name,
+			source,
+			sourceDetail,
+			packageName: meta?.packageName,
+		};
+		const unsupportedFields = Object.keys(frontmatter)
+			.filter((field) => !SUPPORTED_FRONTMATTER_FIELDS.has(field))
+			.sort((a, b) => a.localeCompare(b));
+		if (unsupportedFields.length > 0) {
+			warnings.push({
+				...warningBase,
+				code: "unsupported-frontmatter-fields",
+				fields: unsupportedFields,
+				message: `Unsupported frontmatter fields: ${unsupportedFields.join(", ")}.`,
+			});
+		}
+		const toolsDeclaration = parseToolsDeclaration(rawFrontmatter, frontmatter.tools);
+		if (toolsDeclaration.issue) warnings.push({ ...warningBase, ...toolsDeclaration.issue });
 
 		const explicitClass = normalizeLower(frontmatter.class ?? frontmatter.agent_class);
 
 		agents.push({
 			name,
 			description,
-			tools: parseStringList(frontmatter.tools),
+			tools: toolsDeclaration.tools,
 			model: normalizeString(frontmatter.model),
 			systemPrompt: body,
 			source,
@@ -235,7 +359,7 @@ function loadAgentsFromDirRecursive(
 		});
 	}
 
-	return agents;
+	return { agents, warnings };
 }
 
 function findNearestProjectPiDir(cwd: string, userPiDir: string = getDefaultAgentDir()): string | null {
@@ -342,12 +466,18 @@ function loadRegisteredPackageAgents(
 	cwd: string,
 	scope: AgentScope,
 	options: AgentDiscoveryOptions,
-): { userAgents: AgentConfig[]; projectAgents: AgentConfig[]; entries: RegisteredPackageAgentDir[] } {
+): {
+	userAgents: AgentConfig[];
+	projectAgents: AgentConfig[];
+	warnings: AgentDiscoveryWarning[];
+	entries: RegisteredPackageAgentDir[];
+} {
 	const userPiDir = options.agentDir ?? getDefaultAgentDir();
 	const globalSettingsPath = options.globalSettingsPath ?? path.join(userPiDir, "settings.json");
 	const entries = getRegisteredPackageAgentDirs();
 	const userAgents: AgentConfig[] = [];
 	const projectAgents: AgentConfig[] = [];
+	const warnings: AgentDiscoveryWarning[] = [];
 
 	for (const entry of entries) {
 		const classification = classifyRegisteredPackageDir(entry, cwd, userPiDir, globalSettingsPath);
@@ -360,15 +490,40 @@ function loadRegisteredPackageAgents(
 			discoveredFrom: entry.registeredBy ?? entry.agentDir,
 		});
 
-		if (classification.source === "project") projectAgents.push(...loaded);
-		else userAgents.push(...loaded);
+		warnings.push(...loaded.warnings);
+		if (classification.source === "project") projectAgents.push(...loaded.agents);
+		else userAgents.push(...loaded.agents);
 	}
 
-	return { userAgents, projectAgents, entries };
+	return { userAgents, projectAgents, warnings, entries };
 }
 
-export function formatAgentSourceTag(agent: Pick<AgentConfig, "sourceDetail" | "packageName">): string {
+export function formatAgentSourceTag(
+	agent: Pick<AgentConfig | AgentDiscoveryWarning, "sourceDetail" | "packageName">,
+): string {
 	return agent.packageName ? `${agent.sourceDetail}:${agent.packageName}` : agent.sourceDetail;
+}
+
+export function formatAgentDiscoveryWarnings(
+	warnings: AgentDiscoveryWarning[],
+	maxItems = 5,
+): { text: string; remaining: number } {
+	if (warnings.length === 0) return { text: "none", remaining: 0 };
+	const listed = warnings.slice(0, maxItems);
+	return {
+		text: listed
+			.map((warning) => {
+				const detail =
+					warning.code === "unsupported-frontmatter-fields"
+						? `unsupported fields ${(warning.fields ?? []).join(", ")}`
+						: warning.code === "empty-tools-declaration"
+							? "empty tools declaration"
+							: "malformed tools declaration";
+				return `${warning.agentName} (${formatAgentSourceTag(warning)}): ${detail}`;
+			})
+			.join("; "),
+		remaining: warnings.length - listed.length,
+	};
 }
 
 export function discoverAgents(cwd: string, scope: AgentScope, options: AgentDiscoveryOptions = {}): AgentDiscoveryResult {
@@ -378,24 +533,33 @@ export function discoverAgents(cwd: string, scope: AgentScope, options: AgentDis
 	const projectConfigAgentDirs = scope === "user" ? [] : findAdditionalProjectAgentDirs(cwd, userPiDir);
 	const registeredPackageAgents = loadRegisteredPackageAgents(cwd, scope, options);
 
-	const userLocalAgents = scope === "project" ? [] : loadAgentsFromDirRecursive(userDir, "user", "user-local");
-	const projectConfigAgents =
+	const userLocalDiscovery =
+		scope === "project"
+			? { agents: [], warnings: [] }
+			: loadAgentsFromDirRecursive(userDir, "user", "user-local");
+	const projectConfigDiscoveries =
 		scope === "user"
 			? []
-			: projectConfigAgentDirs.flatMap((dir) => loadAgentsFromDirRecursive(dir, "project", "project-config-path"));
-	const projectLocalAgents =
+			: projectConfigAgentDirs.map((dir) =>
+					loadAgentsFromDirRecursive(dir, "project", "project-config-path"),
+				);
+	const projectLocalDiscovery =
 		scope === "user" || !projectAgentsDir
-			? []
+			? { agents: [], warnings: [] }
 			: loadAgentsFromDirRecursive(projectAgentsDir, "project", "project-local");
 
 	const agentMap = new Map<string, AgentConfig>();
 	const orderedGroups: AgentConfig[][] = [];
 
 	if (scope !== "project") {
-		orderedGroups.push(registeredPackageAgents.userAgents, userLocalAgents);
+		orderedGroups.push(registeredPackageAgents.userAgents, userLocalDiscovery.agents);
 	}
 	if (scope !== "user") {
-		orderedGroups.push(registeredPackageAgents.projectAgents, projectConfigAgents, projectLocalAgents);
+		orderedGroups.push(
+			registeredPackageAgents.projectAgents,
+			projectConfigDiscoveries.flatMap((discovery) => discovery.agents),
+			projectLocalDiscovery.agents,
+		);
 	}
 
 	for (const group of orderedGroups) {
@@ -404,8 +568,16 @@ export function discoverAgents(cwd: string, scope: AgentScope, options: AgentDis
 		}
 	}
 
+	const warnings = [
+		...registeredPackageAgents.warnings,
+		...userLocalDiscovery.warnings,
+		...projectConfigDiscoveries.flatMap((discovery) => discovery.warnings),
+		...projectLocalDiscovery.warnings,
+	].sort((a, b) => a.filePath.localeCompare(b.filePath) || a.code.localeCompare(b.code));
+
 	return {
 		agents: Array.from(agentMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+		warnings,
 		projectAgentsDir,
 		projectConfigAgentDirs,
 		registeredPackageAgentDirs: registeredPackageAgents.entries,

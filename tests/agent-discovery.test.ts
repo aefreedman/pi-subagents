@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { discoverAgents } from "../agents.ts";
+import { discoverAgents, formatAgentDiscoveryWarnings } from "../agents.ts";
+import { buildDelegationPacket } from "../prompting.ts";
 import { clearRegisteredPackageAgentDirsForTests, registerPackageAgentDir } from "../registry.ts";
 
 function ensureDir(dir: string): void {
@@ -23,6 +24,11 @@ function writeAgent(dir: string, name: string, description: string): void {
   );
 }
 
+function writeAgentDefinition(dir: string, fileName: string, content: string): void {
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, fileName), content);
+}
+
 function agentByName(cwd: string, scope: "user" | "project" | "both", agentDir: string, globalSettingsPath: string, name: string) {
   const result = discoverAgents(cwd, scope, { agentDir, globalSettingsPath });
   return result.agents.find((agent) => agent.name === name);
@@ -36,8 +42,35 @@ try {
   const projectRoot = path.join(tempRoot, "workspace");
   const projectPiDir = path.join(projectRoot, ".pi");
 
-  writeAgent(path.join(userPiDir, "agents"), "shared", "user-local shared");
-  writeAgent(path.join(userPiDir, "agents"), "user-local-only", "user-local unique");
+  const userAgentsDir = path.join(userPiDir, "agents");
+  writeAgent(userAgentsDir, "shared", "user-local shared");
+  writeAgent(userAgentsDir, "user-local-only", "user-local unique");
+  writeAgentDefinition(
+    userAgentsDir,
+    "diagnostic-agent.md",
+    [
+      "---",
+      "name: diagnostic-agent",
+      "description: remains discoverable despite diagnostic warnings",
+      "tools:",
+      "  read: true",
+      "mode: subagent",
+      "reasoningEffort: high",
+      "---",
+      "Diagnostic agent body.",
+      "",
+    ].join("\n"),
+  );
+  writeAgentDefinition(
+    userAgentsDir,
+    "empty-tools.md",
+    "---\nname: empty-tools\ndescription: empty tools declaration\ntools: []\n---\nEmpty tools body.\n",
+  );
+  writeAgentDefinition(
+    userAgentsDir,
+    "inline-tools.md",
+    "---\nname: inline-tools\ndescription: valid inline tools declaration\ntools: [read, grep]\n---\nInline tools body.\n",
+  );
 
   const userPackageRoot = path.join(tempRoot, "packages", "user-pack");
   writeAgent(path.join(userPackageRoot, "agents"), "shared", "user-package shared");
@@ -96,10 +129,66 @@ try {
   assert(projectPackageOnly, "Expected project package agent to be discoverable");
   assert.equal(projectPackageOnly.sourceDetail, "project-package");
   assert.equal(projectPackageOnly.packageName, "project-pack");
+  assert.equal(projectPackageOnly.packageRoot?.replace(/\\/g, "/"), projectPackageRoot.replace(/\\/g, "/"));
 
   const projectConfigOnly = agentByName(projectRoot, "both", userPiDir, globalSettingsPath, "project-config-only");
   assert(projectConfigOnly, "Expected project config-path agent to be discoverable");
   assert.equal(projectConfigOnly.sourceDetail, "project-config-path");
+
+  const discoveryWithWarnings = discoverAgents(projectRoot, "both", { agentDir: userPiDir, globalSettingsPath });
+  const diagnosticAgent = discoveryWithWarnings.agents.find((agent) => agent.name === "diagnostic-agent");
+  assert(diagnosticAgent, "Diagnostic warnings must not reject an otherwise valid agent");
+  assert.equal(diagnosticAgent.tools, undefined, "Malformed tools maps must not become invalid CLI tool names");
+  const diagnosticWarnings = discoveryWithWarnings.warnings.filter(
+    (warning) => warning.agentName === "diagnostic-agent",
+  );
+  assert.deepEqual(
+    diagnosticWarnings.map((warning) => warning.code).sort(),
+    ["malformed-tools-declaration", "unsupported-frontmatter-fields"],
+  );
+  assert.deepEqual(
+    diagnosticWarnings.find((warning) => warning.code === "unsupported-frontmatter-fields")?.fields,
+    ["mode", "reasoningEffort"],
+  );
+  const emptyToolsAgent = discoveryWithWarnings.agents.find((agent) => agent.name === "empty-tools");
+  assert(emptyToolsAgent, "Empty tools diagnostics must not reject the agent");
+  assert.equal(emptyToolsAgent.tools, undefined);
+  assert(
+    discoveryWithWarnings.warnings.some(
+      (warning) => warning.agentName === "empty-tools" && warning.code === "empty-tools-declaration",
+    ),
+  );
+  const inlineToolsAgent = discoveryWithWarnings.agents.find((agent) => agent.name === "inline-tools");
+  assert(inlineToolsAgent, "Expected inline-list agent to be discoverable");
+  assert.deepEqual(inlineToolsAgent.tools, ["read", "grep"]);
+  assert.equal(
+    discoveryWithWarnings.warnings.some((warning) => warning.agentName === "inline-tools"),
+    false,
+    "Valid inline tools lists should not produce diagnostics",
+  );
+  const formattedWarnings = formatAgentDiscoveryWarnings(discoveryWithWarnings.warnings, 2);
+  assert.match(formattedWarnings.text, /diagnostic-agent|empty-tools/);
+  assert(formattedWarnings.remaining >= 1, "Warning formatting should report compact truncation");
+
+  const packageDelegationPacket = buildDelegationPacket({
+    agent: projectPackageOnly,
+    task: "Read an on-demand package reference.",
+    cwd: projectRoot,
+    defaultCwd: projectRoot,
+    mode: "single",
+  });
+  assert.match(
+    packageDelegationPacket,
+    new RegExp(`Agent package root: ${projectPackageOnly.packageRoot?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+  );
+  const localDelegationPacket = buildDelegationPacket({
+    agent: projectConfigOnly,
+    task: "Perform a local task.",
+    cwd: projectRoot,
+    defaultCwd: projectRoot,
+    mode: "single",
+  });
+  assert.equal(localDelegationPacket.includes("Agent package root:"), false);
 
   const userScopeShared = agentByName(projectRoot, "user", userPiDir, globalSettingsPath, "shared");
   assert(userScopeShared, "Expected shared agent in user scope");

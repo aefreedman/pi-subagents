@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 - 2026-07-09
+
+### Changed
+
+- Hardened the bundled `general` fallback around delegation authority, destructive/external actions, validation, and completion reporting.
+- Added an available package root to delegation packets so package agents can locate on-demand references.
+
+### Added
+
+- Added non-fatal discovery diagnostics for unsupported frontmatter fields and empty or malformed `tools` declarations, surfaced compactly by `subagent_list` and fully in its result details.
+
 ## 0.3.0 - 2026-07-09
 
 ### Changed

@@ -23,7 +23,13 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
-import { type AgentConfig, type AgentScope, discoverAgents, formatAgentSourceTag } from "../agents.js";
+import {
+	type AgentConfig,
+	type AgentScope,
+	discoverAgents,
+	formatAgentDiscoveryWarnings,
+	formatAgentSourceTag,
+} from "../agents.js";
 import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../prompting.js";
 import { registerPackageAgentDir } from "../registry.js";
 
@@ -775,7 +781,12 @@ export default function (pi: ExtensionAPI) {
 			const lines = discovery.agents.map(
 				(agent) => `- ${agent.name} (${formatAgentSourceTag(agent)}) - ${agent.description}`,
 			);
-			const text = lines.length > 0 ? lines.join("\n") : "No subagents discovered.";
+			const warningSummary = formatAgentDiscoveryWarnings(discovery.warnings);
+			const warningText =
+				discovery.warnings.length > 0
+					? `\nWarnings (${discovery.warnings.length}): ${warningSummary.text}${warningSummary.remaining > 0 ? `; +${warningSummary.remaining} more` : ""}`
+					: "";
+			const text = `${lines.length > 0 ? lines.join("\n") : "No subagents discovered."}${warningText}`;
 			return {
 				content: [{ type: "text", text }],
 				details: {
@@ -783,11 +794,13 @@ export default function (pi: ExtensionAPI) {
 					projectAgentsDir: discovery.projectAgentsDir,
 					projectConfigAgentDirs: discovery.projectConfigAgentDirs,
 					registeredPackageAgentDirs: discovery.registeredPackageAgentDirs,
+					warnings: discovery.warnings,
 					agents: discovery.agents.map((agent) => ({
 						name: agent.name,
 						source: agent.source,
 						sourceDetail: agent.sourceDetail,
 						packageName: agent.packageName,
+						packageRoot: agent.packageRoot,
 						filePath: agent.filePath,
 						discoveredFrom: agent.discoveredFrom,
 					})),
