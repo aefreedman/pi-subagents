@@ -132,15 +132,8 @@ function formatDurationCompact(ms: number): string {
 
 function formatModelTag(model?: string): string {
 	if (!model) return "";
-	const id = model.toLowerCase();
-	if (id.includes("sonnet")) return "sonnet";
-	if (id.includes("opus")) return "opus";
-	if (id.includes("haiku")) return "haiku";
-	if (id.includes("gpt-5")) return "gpt-5";
-	if (id.includes("gpt-4")) return "gpt-4";
-	if (id.includes("codex")) return "codex";
-	const compact = model.split(/[/:]/).pop() ?? model;
-	return compact.length > 16 ? `${compact.slice(0, 15)}…` : compact;
+	const modelId = model.split(/[/:]/).pop() ?? model;
+	return modelId.length > 24 ? `${modelId.slice(0, 23)}…` : modelId;
 }
 
 function formatToolCall(
@@ -489,6 +482,7 @@ type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
+	parentModel: string | undefined,
 	agentName: string,
 	task: string,
 	cwd: string | undefined,
@@ -518,7 +512,8 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-	if (agent.model) args.push("--model", agent.model);
+	const effectiveModel = agent.model ?? parentModel;
+	if (effectiveModel) args.push("--model", effectiveModel);
 	const filteredTools = agent.tools?.filter((tool) => tool !== "subagent" && tool !== "subagent_list");
 	if (filteredTools && filteredTools.length > 0) args.push("--tools", filteredTools.join(","));
 
@@ -535,7 +530,7 @@ async function runSingleAgent(
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-		model: agent.model,
+		model: effectiveModel,
 		startedAt: Date.now(),
 		step,
 		agentClass: agent.agentClass,
@@ -818,6 +813,7 @@ export default function (pi: ExtensionAPI) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
+			const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
@@ -903,6 +899,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,
+						parentModel,
 						step.agent,
 						taskWithContext,
 						step.cwd,
@@ -957,6 +954,7 @@ export default function (pi: ExtensionAPI) {
 						messages: [],
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+						model: agents.find((agent) => agent.name === params.tasks?.[i].agent)?.model ?? parentModel,
 						startedAt: Date.now(),
 					};
 				}
@@ -978,6 +976,7 @@ export default function (pi: ExtensionAPI) {
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,
+						parentModel,
 						t.agent,
 						t.task,
 						t.cwd,
@@ -1013,6 +1012,7 @@ export default function (pi: ExtensionAPI) {
 				const result = await runSingleAgent(
 					ctx.cwd,
 					agents,
+					parentModel,
 					params.agent,
 					params.task,
 					params.cwd,

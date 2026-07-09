@@ -114,7 +114,7 @@ Common optional fields:
 name: scout
 description: Bounded repository reconnaissance for low-complexity discovery tasks.
 tools: read, grep, find, ls
-model: openai-codex/gpt-5.3-codex-spark
+model: openai-codex/gpt-5.6-luna
 class: research
 output_format: markdown_sections
 required_sections: Findings, Key Files, Stop Reason, Recommended Next Slice
@@ -258,7 +258,7 @@ Base args:
 - `--no-session`
 
 Optional args:
-- `--model <agent.model>`
+- `--model <agent.model-or-parent-model>`
 - `--tools <agent.tools>`
 - `--append-system-prompt <temp-file>`
 
@@ -440,13 +440,16 @@ The child can be constrained operationally as well.
 
 ## Model selection behavior
 
-If an agent declares `model`, the child Pi process uses that model.
+If an agent declares `model`, the child Pi process uses that exact model. This is an explicit pin.
+
+If an agent does not declare `model`, the child inherits the parent Pi session's active provider/model via `--model`. This keeps unpinned agents on the orchestrator's selected model instead of silently falling back to the user's process-level default.
 
 This makes it possible to mix:
-- faster reconnaissance-style agents
-- more deliberate review/planning agents
+- unpinned agents that track the parent session's model
+- faster reconnaissance-style agents pinned to a smaller model subtype
+- more deliberate review/planning agents pinned to a larger model subtype
 
-within the same orchestration package.
+The result renderer retains the complete model id, including point version and named subtype, for example `gpt-5.6-luna` or `gpt-5.6-sol`.
 
 ## UI / rendering behavior
 

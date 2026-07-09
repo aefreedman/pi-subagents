@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-07-09
 
 ### Changed
 
-- Improved subagent result rendering with compact per-agent performance stats, including elapsed time, tool count, token/cache usage, cost, context size, and model tag.
+- Improved subagent result rendering with compact, aligned per-agent performance stats, including elapsed time, tool count, token/cache usage, cache hit rate, cost, context size, and the complete model point version/subtype.
+- Unpinned subagents now inherit the parent session's active provider/model; agent frontmatter can still explicitly pin an exact model.
 
 ## 0.2.2 - 2026-06-26
 
