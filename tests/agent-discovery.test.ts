@@ -129,7 +129,10 @@ try {
   assert(projectPackageOnly, "Expected project package agent to be discoverable");
   assert.equal(projectPackageOnly.sourceDetail, "project-package");
   assert.equal(projectPackageOnly.packageName, "project-pack");
-  assert.equal(projectPackageOnly.packageRoot?.replace(/\\/g, "/"), projectPackageRoot.replace(/\\/g, "/"));
+  assert.equal(
+    projectPackageOnly.packageRoot?.replace(/\\/g, "/"),
+    fs.realpathSync.native(projectPackageRoot).replace(/\\/g, "/"),
+  );
 
   const projectConfigOnly = agentByName(projectRoot, "both", userPiDir, globalSettingsPath, "project-config-only");
   assert(projectConfigOnly, "Expected project config-path agent to be discoverable");
@@ -138,7 +141,7 @@ try {
   const discoveryWithWarnings = discoverAgents(projectRoot, "both", { agentDir: userPiDir, globalSettingsPath });
   assert.equal(
     discoveryWithWarnings.projectRoot?.replace(/\\/g, "/"),
-    projectRoot.replace(/\\/g, "/"),
+    fs.realpathSync.native(projectRoot).replace(/\\/g, "/"),
     "Expected discovery to expose one canonical project root for trust caching",
   );
   const nestedProjectCwd = path.join(projectRoot, "src", "nested");

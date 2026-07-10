@@ -6,6 +6,10 @@
 
 - Migrated Pi core extension imports and peer dependencies to the `@earendil-works` package scope.
 
+### Fixed
+
+- Compare canonical package and project roots in discovery tests so macOS `/var` to `/private/var` resolution is handled correctly.
+
 ## 0.6.0 - 2026-07-09
 
 ### Changed
