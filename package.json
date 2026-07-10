@@ -1,7 +1,7 @@
 {
   "name": "@aefree/pi-subagents",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "keywords": [
     "pi-package"
@@ -18,10 +18,10 @@
     "test": "npx --yes tsx tests/agent-discovery.test.ts && npx --yes tsx tests/execution-profile.test.ts && npx --yes tsx tests/project-agent-trust.test.ts && npx --yes tsx tests/child-process.test.ts"
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-agent-core": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "description": "Pi tools and package support for subagent orchestration.",

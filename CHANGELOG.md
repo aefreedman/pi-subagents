@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 - 2026-07-10
+
+### Changed
+
+- Migrated Pi core extension imports and peer dependencies to the `@earendil-works` package scope.
+
 ## 0.6.0 - 2026-07-09
 
 ### Changed
