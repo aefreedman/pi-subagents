@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Project-agent execution now honors Pi project trust, caches one fallback approval or denial per canonical project root/session, and treats `confirmProjectAgents` as fallback-confirmation control rather than a trust bypass.
+
+### Fixed
+
+- Deny untrusted project-agent execution when interactive confirmation is unavailable instead of silently skipping the guard.
+
 ## 0.5.0 - 2026-07-09
 
 ### Added

@@ -41,6 +41,11 @@ import {
 	type ThinkingSelectionSource,
 } from "../execution-profile.js";
 import { registerPackageAgentDir } from "../registry.js";
+import {
+	ProjectAgentTrustGate,
+	type ProjectAgentTrustResult,
+	type ProjectAgentTrustSummary,
+} from "../project-agent-trust.js";
 import { waitForChildExit } from "./child-process.js";
 
 const MAX_PARALLEL_TASKS = 12;
@@ -261,7 +266,9 @@ interface SingleResult {
 interface SubagentDetails {
 	mode: "single" | "parallel" | "chain";
 	agentScope: AgentScope;
+	projectRoot: string | null;
 	projectAgentsDir: string | null;
+	projectAgentTrust?: ProjectAgentTrustResult;
 	results: SingleResult[];
 }
 
@@ -789,7 +796,10 @@ const SubagentParams = Type.Object({
 	thinking: thinkingSelectionSchema(),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
-		Type.Boolean({ description: "Prompt before running project-scoped agents. Default: true.", default: true }),
+		Type.Boolean({
+			description: "Allow one interactive fallback confirmation for an otherwise untrusted project. False denies rather than bypasses trust. Default: true.",
+			default: true,
+		}),
 	),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
 });
@@ -814,6 +824,7 @@ function registerBundledAgents(): void {
 
 export default function (pi: ExtensionAPI) {
 	registerBundledAgents();
+	const projectAgentTrustGate = new ProjectAgentTrustGate();
 	pi.registerTool({
 		name: "subagent_list",
 		label: "Subagent List",
@@ -844,6 +855,7 @@ export default function (pi: ExtensionAPI) {
 				details: {
 					agentScope,
 					availableModels,
+					projectRoot: discovery.projectRoot,
 					projectAgentsDir: discovery.projectAgentsDir,
 					projectConfigAgentDirs: discovery.projectConfigAgentDirs,
 					registeredPackageAgentDirs: discovery.registeredPackageAgentDirs,
@@ -891,12 +903,15 @@ export default function (pi: ExtensionAPI) {
 			const hasSingle = Boolean(params.agent && params.task);
 			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle);
 
+			let projectAgentTrust: ProjectAgentTrustResult | undefined;
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
 				(results: SingleResult[]): SubagentDetails => ({
 					mode,
 					agentScope,
+					projectRoot: discovery.projectRoot,
 					projectAgentsDir: discovery.projectAgentsDir,
+					projectAgentTrust,
 					results,
 				});
 
@@ -936,34 +951,62 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
-				const requestedAgentNames = new Set<string>();
-				if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
-				if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);
-				if (params.agent) requestedAgentNames.add(params.agent);
+			const requestedAgentNames = new Set<string>();
+			if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
+			if (params.tasks) for (const task of params.tasks) requestedAgentNames.add(task.agent);
+			if (params.agent) requestedAgentNames.add(params.agent);
+			const requestedAgents = Array.from(requestedAgentNames)
+				.map((name) => agents.find((agent) => agent.name === name))
+				.filter((agent): agent is AgentConfig => Boolean(agent));
 
-				const projectAgentsRequested = Array.from(requestedAgentNames)
-					.map((name) => agents.find((a) => a.name === name))
-					.filter((a): a is AgentConfig => a?.source === "project");
+			const formatTrustEntries = (entries: ProjectAgentTrustSummary[]) =>
+				entries
+					.map((agent) => {
+						const packageLabel = agent.packageName ? `:${agent.packageName}` : "";
+						return `- ${agent.name} (${agent.sourceDetail}${packageLabel})\n  ${agent.sourcePath}`;
+					})
+					.join("\n");
 
-				if (projectAgentsRequested.length > 0) {
-					const entries = projectAgentsRequested
-						.map((agent) => {
-							const origin = formatAgentSourceTag(agent);
-							const sourcePath = agent.discoveredFrom ?? agent.filePath;
-							return `- ${agent.name} (${origin})\n  ${sourcePath}`;
-						})
-						.join("\n");
-					const ok = await ctx.ui.confirm(
-						"Run project-scoped agents?",
-						`Agents:\n${entries}\n\nProject agents are repo-controlled. Only continue for trusted repositories.`,
-					);
-					if (!ok)
-						return {
-							content: [{ type: "text", text: "Canceled: project-scoped agents not approved." }],
-							details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
-						};
-				}
+			projectAgentTrust = await projectAgentTrustGate.authorize({
+				projectRoot: discovery.projectRoot,
+				isProjectTrusted: ctx.isProjectTrusted(),
+				hasUI: ctx.hasUI,
+				confirmationEnabled: confirmProjectAgents,
+				agents: requestedAgents,
+				confirm: ctx.hasUI
+					? (projectAgents, projectRoot) =>
+							ctx.ui.confirm(
+								"Run project-scoped agents?",
+								[
+									`Project: ${projectRoot}`,
+									"",
+									"Agents:",
+									formatTrustEntries(projectAgents),
+									"",
+									"Pi has not marked this project trusted. Project agents are repository-controlled prompts.",
+									"Approve them for this Pi session?",
+								].join("\n"),
+							)
+					: undefined,
+			});
+
+			if (!projectAgentTrust.allowed) {
+				const remediation =
+					projectAgentTrust.reason === "deny-noninteractive"
+						? "Save Pi project trust and restart, or launch the unattended Pi process with --approve."
+						: projectAgentTrust.reason === "deny-confirmation-disabled"
+							? "Leave confirmProjectAgents enabled for interactive fallback, or trust the project through Pi and restart."
+							: "Trust the project and restart Pi, or restart the session to reconsider the fallback decision.";
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Project-agent execution denied (${projectAgentTrust.reason}). ${projectAgentTrust.errorMessage ?? "The project is not trusted for this session."} ${remediation}`,
+						},
+					],
+					details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+					isError: true,
+				};
 			}
 
 			if (params.chain && params.chain.length > 0) {

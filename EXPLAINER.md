@@ -248,9 +248,9 @@ Current runtime policy:
 
 `discoverAgents()` loads agents from the configured scope and collects non-fatal frontmatter diagnostics. Unsupported fields and empty or malformed tool declarations remain visible through `subagent_list` instead of silently implying runtime support.
 
-If project agents are requested and UI is available, the package can ask for confirmation before running project-controlled agents.
+Before launching a requested project agent, the package consults `ctx.isProjectTrusted()`. Trusted projects run without an additional package prompt. Otherwise, an interactive session may approve or deny the canonical project root once; that decision is cached for the extension/session instance. Untrusted non-interactive requests fail closed and must use saved Pi trust or an explicit Pi `--approve` launch.
 
-This is an important trust boundary.
+This fallback remains necessary because `.pi/agents/` and `.pi/subagents.json` are package conventions rather than Pi core trust-triggering resources. `confirmProjectAgents: false` disables the interactive fallback and therefore denies untrusted execution; it is not a trust bypass.
 
 ### 3. Package builds child invocation
 
@@ -490,12 +490,15 @@ Project-local agents are effectively repo-controlled prompts.
 That means they are a trust boundary.
 
 Current safeguards:
-- the package can prompt for confirmation before using project agents
-- the README explicitly warns that project-level agent prompts should only be enabled for trusted repositories
+- user-scoped agents do not enter the project-agent gate
+- Pi-trusted projects run project agents without redundant confirmation
+- otherwise, interactive approval or denial is cached once per canonical project root for the session
+- untrusted non-interactive project-agent execution is denied before child launch
+- result details preserve the policy reason, project root, and requested project-agent origins
 
-This is especially important when `agentScope` is:
-- `project`
-- `both`
+`confirmProjectAgents` controls only whether the interactive fallback is available. It cannot override an untrusted project decision. This is especially important when `agentScope` is `project` or `both`.
+
+Pi project trust and the package fallback are input-loading guards, not sandboxes. The child process and its tools still run with the local user's permissions.
 
 ## Current limitations
 

@@ -59,6 +59,19 @@ Discovery precedence is:
 4. user-global `~/.pi/agent/agents/`
 5. user-installed package agent dirs
 
+## Project-agent trust
+
+Project agents are repository-controlled prompts. `pi-subagents` uses Pi's existing project-trust state before running them:
+
+- trusted project: run without an extra package prompt
+- untrusted interactive project: ask once per canonical project root and cache approval or denial for the Pi session
+- untrusted non-interactive project: deny; use saved Pi trust or launch Pi with `--approve`
+- user-scoped agent: no project-agent gate
+
+`confirmProjectAgents` now controls whether the one-time interactive fallback is available. Setting it to `false` denies untrusted project-agent execution rather than bypassing trust. This policy is an input-loading guard, not a sandbox or a change to agent tool permissions.
+
+Because `.pi/agents/` and `.pi/subagents.json` are package conventions rather than Pi core trust-triggering resources, the package fallback remains necessary when Pi has no trust decision.
+
 ## Install
 
 From GitHub:

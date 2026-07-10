@@ -136,6 +136,19 @@ try {
   assert.equal(projectConfigOnly.sourceDetail, "project-config-path");
 
   const discoveryWithWarnings = discoverAgents(projectRoot, "both", { agentDir: userPiDir, globalSettingsPath });
+  assert.equal(
+    discoveryWithWarnings.projectRoot?.replace(/\\/g, "/"),
+    projectRoot.replace(/\\/g, "/"),
+    "Expected discovery to expose one canonical project root for trust caching",
+  );
+  const nestedProjectCwd = path.join(projectRoot, "src", "nested");
+  ensureDir(nestedProjectCwd);
+  const nestedDiscovery = discoverAgents(nestedProjectCwd, "both", { agentDir: userPiDir, globalSettingsPath });
+  assert.equal(
+    nestedDiscovery.projectRoot?.replace(/\\/g, "/"),
+    discoveryWithWarnings.projectRoot?.replace(/\\/g, "/"),
+    "Nested working directories must share one canonical project trust cache key",
+  );
   const diagnosticAgent = discoveryWithWarnings.agents.find((agent) => agent.name === "diagnostic-agent");
   assert(diagnosticAgent, "Diagnostic warnings must not reject an otherwise valid agent");
   assert.equal(diagnosticAgent.tools, undefined, "Malformed tools maps must not become invalid CLI tool names");

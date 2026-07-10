@@ -12,6 +12,16 @@ Purpose: root/orchestrator guidance for effective delegated workflows with `pi-s
 - Delegated workers must return handoffs instead of spawning more subagents.
 - Nested delegation is blocked at runtime, so do not plan workflows that rely on recursive spawning.
 
+## Project-agent trust
+
+Project agents are repository-controlled prompts. The runtime automatically honors Pi project trust:
+
+- trusted projects run without an extra package prompt
+- otherwise, interactive approval/denial is requested at most once per canonical project root and Pi session
+- untrusted non-interactive execution is denied; use saved Pi trust or an explicit Pi `--approve` launch
+
+Leave `confirmProjectAgents` unset or `true` to permit that interactive fallback. Setting it to `false` denies untrusted project agents; it does not authorize them. Do not repeatedly ask the user to approve agents after the runtime has returned a session-approved trust result.
+
 ## Choosing an agent
 
 ### Prefer the most specific suitable specialist

@@ -55,6 +55,7 @@ export interface AgentConfig {
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
 	warnings: AgentDiscoveryWarning[];
+	projectRoot: string | null;
 	projectAgentsDir: string | null;
 	projectConfigAgentDirs: string[];
 	registeredPackageAgentDirs: RegisteredPackageAgentDir[];
@@ -529,6 +530,8 @@ export function formatAgentDiscoveryWarnings(
 export function discoverAgents(cwd: string, scope: AgentScope, options: AgentDiscoveryOptions = {}): AgentDiscoveryResult {
 	const userPiDir = options.agentDir ?? getDefaultAgentDir();
 	const userDir = path.join(userPiDir, "agents");
+	const projectPiDir = findNearestProjectPiDir(cwd, userPiDir);
+	const projectRoot = projectPiDir ? normalizeExistingPath(path.dirname(projectPiDir)) : null;
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd, userPiDir);
 	const projectConfigAgentDirs = scope === "user" ? [] : findAdditionalProjectAgentDirs(cwd, userPiDir);
 	const registeredPackageAgents = loadRegisteredPackageAgents(cwd, scope, options);
@@ -578,6 +581,7 @@ export function discoverAgents(cwd: string, scope: AgentScope, options: AgentDis
 	return {
 		agents: Array.from(agentMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
 		warnings,
+		projectRoot,
 		projectAgentsDir,
 		projectConfigAgentDirs,
 		registeredPackageAgentDirs: registeredPackageAgents.entries,
