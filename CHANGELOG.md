@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added macOS CI coverage for tests and package validation.
+- Added optional call-wide and per-task model/thinking selections for single, parallel, and chain delegation, with exact available-model validation and an opt-in `subagent_list` model catalog.
+
+### Changed
+
+- Unpinned agents now inherit both the parent model and Pi thinking level; hard frontmatter model pins still win, and result details expose selection sources.
+
+### Fixed
+
+- Escalate aborted child processes from SIGTERM to SIGKILL only when they have not settled through `close` or `error`, and clean up lifecycle listeners and timers on settlement.
+- Explain fallback `pi` executable launch failures with the attempted command and PATH remediation.
+
 ## 0.4.0 - 2026-07-09
 
 ### Changed

@@ -79,6 +79,22 @@ Project-local install:
 pi install -l <path-to-pi-subagents>
 ```
 
+## Model and thinking selection
+
+Unpinned agents inherit the parent session's provider/model and Pi thinking level by default. Before selecting a different model, the coordinator can call `subagent_list` with `includeModels: true` to retrieve exact currently available identifiers and see agent model pins. It may then set optional call-wide defaults or per-task selections when a bounded slice has a clear cost, latency, or complexity reason:
+
+```text
+subagent({
+  tasks: [
+    { agent: "scout", task: "Locate the relevant files.", model: "provider/model-id", thinking: "low" },
+    { agent: "reviewer", task: "Review the narrowed change.", thinking: "high" }
+  ],
+  agentScope: "both"
+})
+```
+
+Model selections must be exact available `provider/model` identifiers. Agent frontmatter `model` declarations remain hard pins and take precedence over coordinator selections. Thinking uses Pi's `off | minimal | low | medium | high | xhigh` levels and may still be clamped by Pi to the selected model's capabilities.
+
 ## Optional agent frontmatter
 
 Supported optional frontmatter fields include `class`, `output_format`, `required_sections`, and `strictness`. See `EXPLAINER.md` and `skills/using-subagents/SKILL.md` for details.

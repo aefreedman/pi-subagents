@@ -86,6 +86,21 @@ Use chain mode only when each step genuinely depends on the previous output.
 
 Keep chains short and ensure each step remains bounded.
 
+## Model and thinking selection
+
+Unpinned agents inherit the parent model and thinking level. Keep that default unless a bounded slice has a clear cost, latency, or complexity reason to differ.
+
+The root may set call-wide defaults or per-item `model` and `thinking` selections. Before choosing a non-parent model, call `subagent_list` with `includeModels: true`; use one of its exact available `provider/model` identifiers. Pi thinking levels are `off | minimal | low | medium | high | xhigh`.
+
+Agent frontmatter model pins are policy boundaries and take precedence. Do not try to override them.
+
+Reasonable task-sensitive guidance:
+- low or medium: bounded discovery, repository/history searches, and check-only linting
+- medium or high: focused planning, flow analysis, and ordinary implementation
+- high or xhigh: genuinely ambiguous architecture, security, data-integrity, or risky resolution work
+
+Do not choose solely from the agent's class or maximize thinking by default. Record why a non-inherited selection is worthwhile, and expect Pi to clamp thinking to model capabilities.
+
 ## Practical heuristics
 
 - If the task is mostly discovery, start with `scout`.

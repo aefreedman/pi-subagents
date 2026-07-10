@@ -31,7 +31,17 @@ import {
 	formatAgentSourceTag,
 } from "../agents.js";
 import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../prompting.js";
+import {
+	THINKING_LEVELS,
+	findUnavailableModelSelections,
+	resolveAgentExecutionProfile,
+	type ExecutionSelection,
+	type ModelSelectionSource,
+	type ThinkingLevel,
+	type ThinkingSelectionSource,
+} from "../execution-profile.js";
 import { registerPackageAgentDir } from "../registry.js";
+import { waitForChildExit } from "./child-process.js";
 
 const MAX_PARALLEL_TASKS = 12;
 const MAX_CONCURRENCY = 12;
@@ -231,6 +241,9 @@ interface SingleResult {
 	stderr: string;
 	usage: UsageStats;
 	model?: string;
+	modelSource?: ModelSelectionSource;
+	thinking?: ThinkingLevel;
+	thinkingSource?: ThinkingSelectionSource;
 	startedAt?: number;
 	endedAt?: number;
 	durationMs?: number;
@@ -352,6 +365,7 @@ function formatAgentPerformanceStats(result: SingleResult): string {
 	if (usage.cost) parts.push(`$${usage.cost.toFixed(3)}`);
 	if (usage.contextTokens) parts.push(`ctx${formatTokens(usage.contextTokens)}`);
 	if (modelTag) parts.push(`(${modelTag})`);
+	if (result.thinking) parts.push(`think:${result.thinking}`);
 
 	return parts.join(" ") || (result.exitCode === -1 ? "starting" : "no usage");
 }
@@ -489,6 +503,9 @@ async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
 	parentModel: string | undefined,
+	parentThinking: ThinkingLevel | undefined,
+	callSelection: ExecutionSelection,
+	taskSelection: ExecutionSelection,
 	agentName: string,
 	task: string,
 	cwd: string | undefined,
@@ -518,8 +535,15 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-	const effectiveModel = agent.model ?? parentModel;
-	if (effectiveModel) args.push("--model", effectiveModel);
+	const executionProfile = resolveAgentExecutionProfile({
+		agentModel: agent.model,
+		parentModel,
+		parentThinking,
+		callSelection,
+		taskSelection,
+	});
+	if (executionProfile.model) args.push("--model", executionProfile.model);
+	if (executionProfile.thinking) args.push("--thinking", executionProfile.thinking);
 	const filteredTools = agent.tools?.filter((tool) => tool !== "subagent" && tool !== "subagent_list");
 	if (filteredTools && filteredTools.length > 0) args.push("--tools", filteredTools.join(","));
 
@@ -536,7 +560,10 @@ async function runSingleAgent(
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-		model: effectiveModel,
+		model: executionProfile.model,
+		modelSource: executionProfile.modelSource,
+		thinking: executionProfile.thinking,
+		thinkingSource: executionProfile.thinkingSource,
 		startedAt: Date.now(),
 		step,
 		agentClass: agent.agentClass,
@@ -611,7 +638,7 @@ async function runSingleAgent(
 		let wasAborted = false;
 		startSpinnerRefresh();
 
-		const exitCode = await new Promise<number>((resolve) => {
+		const completion = await new Promise<{ exitCode: number; wasAborted: boolean }>((resolve) => {
 			const invocation = getPiInvocation(args);
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
@@ -669,29 +696,25 @@ async function runSingleAgent(
 				currentResult.stderr += data.toString();
 			});
 
-			proc.on("close", (code) => {
-				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
-			});
-
-			proc.on("error", () => {
-				resolve(1);
-			});
-
-			if (signal) {
-				const killProc = () => {
-					wasAborted = true;
-					proc.kill("SIGTERM");
-					setTimeout(() => {
-						if (!proc.killed) proc.kill("SIGKILL");
-					}, 5000);
-				};
-				if (signal.aborted) killProc();
-				else signal.addEventListener("abort", killProc, { once: true });
-			}
+			void waitForChildExit(proc, {
+				signal,
+				onClose: () => {
+					if (buffer.trim()) processLine(buffer);
+				},
+				onError: (error) => {
+					const code = (error as NodeJS.ErrnoException).code;
+					if (code === "ENOENT" && invocation.command === "pi") {
+						currentResult.stderr += [
+							`Unable to start delegated Pi process: executable "${invocation.command}" was not found.`,
+							`Install "${invocation.command}" or add its directory to PATH, then retry.`,
+						].join(" ");
+					}
+				},
+			}).then(resolve);
 		});
+		wasAborted = completion.wasAborted;
 
-		currentResult.exitCode = exitCode;
+		currentResult.exitCode = completion.exitCode;
 		currentResult.endedAt = Date.now();
 		currentResult.durationMs = currentResult.endedAt - (currentResult.startedAt ?? currentResult.endedAt);
 		stopSpinnerRefresh();
@@ -721,16 +744,35 @@ async function runSingleAgent(
 	}
 }
 
+const modelSelectionSchema = () =>
+	Type.Optional(
+		Type.String({
+			minLength: 1,
+			description: "Exact available provider/model for an unpinned agent. Agent frontmatter model pins take precedence.",
+		}),
+	);
+
+const thinkingSelectionSchema = () =>
+	Type.Optional(
+		StringEnum(THINKING_LEVELS, {
+			description: "Pi thinking level for this delegated child process.",
+		}),
+	);
+
 const TaskItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task to delegate to the agent" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+	model: modelSelectionSchema(),
+	thinking: thinkingSelectionSchema(),
 });
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+	model: modelSelectionSchema(),
+	thinking: thinkingSelectionSchema(),
 });
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
@@ -743,6 +785,8 @@ const SubagentParams = Type.Object({
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
+	model: modelSelectionSchema(),
+	thinking: thinkingSelectionSchema(),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
 		Type.Boolean({ description: "Prompt before running project-scoped agents. Default: true.", default: true }),
@@ -752,6 +796,9 @@ const SubagentParams = Type.Object({
 
 const SubagentListParams = Type.Object({
 	agentScope: Type.Optional(AgentScopeSchema),
+	includeModels: Type.Optional(
+		Type.Boolean({ description: "Include exact currently available provider/model identifiers. Default: false.", default: false }),
+	),
 });
 
 function registerBundledAgents(): void {
@@ -770,7 +817,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "subagent_list",
 		label: "Subagent List",
-		description: "List available subagents discovered from user/project local files and registered package agent directories.",
+		description: "List available subagents and, when requested, exact available model identifiers.",
 		promptSnippet: "List available specialist agents before delegating work with the subagent tool.",
 		parameters: SubagentListParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -778,19 +825,25 @@ export default function (pi: ExtensionAPI) {
 			if (nestedBlock) return nestedBlock;
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const discovery = discoverAgents(ctx.cwd, agentScope);
-			const lines = discovery.agents.map(
-				(agent) => `- ${agent.name} (${formatAgentSourceTag(agent)}) - ${agent.description}`,
-			);
+			const lines = discovery.agents.map((agent) => {
+				const modelPin = agent.model ? ` [model pin: ${agent.model}]` : "";
+				return `- ${agent.name} (${formatAgentSourceTag(agent)})${modelPin} - ${agent.description}`;
+			});
 			const warningSummary = formatAgentDiscoveryWarnings(discovery.warnings);
 			const warningText =
 				discovery.warnings.length > 0
 					? `\nWarnings (${discovery.warnings.length}): ${warningSummary.text}${warningSummary.remaining > 0 ? `; +${warningSummary.remaining} more` : ""}`
 					: "";
-			const text = `${lines.length > 0 ? lines.join("\n") : "No subagents discovered."}${warningText}`;
+			const availableModels = params.includeModels
+				? ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`).sort((a, b) => a.localeCompare(b))
+				: undefined;
+			const modelText = availableModels ? `\nAvailable models (${availableModels.length}): ${availableModels.join(", ") || "none"}` : "";
+			const text = `${lines.length > 0 ? lines.join("\n") : "No subagents discovered."}${warningText}${modelText}`;
 			return {
 				content: [{ type: "text", text }],
 				details: {
 					agentScope,
+					availableModels,
 					projectAgentsDir: discovery.projectAgentsDir,
 					projectConfigAgentDirs: discovery.projectConfigAgentDirs,
 					registeredPackageAgentDirs: discovery.registeredPackageAgentDirs,
@@ -800,6 +853,7 @@ export default function (pi: ExtensionAPI) {
 						source: agent.source,
 						sourceDetail: agent.sourceDetail,
 						packageName: agent.packageName,
+						model: agent.model,
 						packageRoot: agent.packageRoot,
 						filePath: agent.filePath,
 						discoveredFrom: agent.discoveredFrom,
@@ -815,6 +869,7 @@ export default function (pi: ExtensionAPI) {
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
+			"Unpinned agents may use optional exact model and Pi thinking selections per call or per task; otherwise they inherit the parent.",
 			'Default agent scope is "user" (from ~/.pi/agent/agents plus user-installed package agents).',
 			'To enable project-scoped agents from .pi/agents, .pi/subagents.json, or project-installed packages, set agentScope: "both" (or "project").',
 		].join(" "),
@@ -827,6 +882,8 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+			const parentThinking = pi.getThinkingLevel() as ThinkingLevel;
+			const callSelection: ExecutionSelection = { model: params.model, thinking: params.thinking };
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
@@ -854,6 +911,29 @@ export default function (pi: ExtensionAPI) {
 					],
 					details: makeDetails("single")([]),
 				};
+			}
+
+			const requestedModels = new Set(
+				[params.model, ...(params.tasks ?? []).map((item) => item.model), ...(params.chain ?? []).map((item) => item.model)].filter(
+					(value): value is string => Boolean(value),
+				),
+			);
+			if (requestedModels.size > 0) {
+				const availableModels = ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`);
+				const unavailableModels = findUnavailableModelSelections(Array.from(requestedModels), availableModels);
+				if (unavailableModels.length > 0) {
+					const preview = availableModels.slice(0, 20).join(", ") || "none";
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Unavailable subagent model selection: ${unavailableModels.join(", ")}. Use an exact available provider/model. Available: ${preview}${availableModels.length > 20 ? `, +${availableModels.length - 20} more` : ""}`,
+							},
+						],
+						details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+						isError: true,
+					};
+				}
 			}
 
 			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
@@ -913,6 +993,9 @@ export default function (pi: ExtensionAPI) {
 						ctx.cwd,
 						agents,
 						parentModel,
+						parentThinking,
+						callSelection,
+						{ model: step.model, thinking: step.thinking },
 						step.agent,
 						taskWithContext,
 						step.cwd,
@@ -959,15 +1042,27 @@ export default function (pi: ExtensionAPI) {
 
 				// Initialize placeholder results
 				for (let i = 0; i < params.tasks.length; i++) {
+					const task = params.tasks[i];
+					const configuredAgent = agents.find((agent) => agent.name === task.agent);
+					const executionProfile = resolveAgentExecutionProfile({
+						agentModel: configuredAgent?.model,
+						parentModel,
+						parentThinking,
+						callSelection,
+						taskSelection: { model: task.model, thinking: task.thinking },
+					});
 					allResults[i] = {
-						agent: params.tasks[i].agent,
+						agent: task.agent,
 						agentSource: "unknown",
-						task: params.tasks[i].task,
+						task: task.task,
 						exitCode: -1, // -1 = still running
 						messages: [],
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-						model: agents.find((agent) => agent.name === params.tasks?.[i].agent)?.model ?? parentModel,
+						model: executionProfile.model,
+						modelSource: executionProfile.modelSource,
+						thinking: executionProfile.thinking,
+						thinkingSource: executionProfile.thinkingSource,
 						startedAt: Date.now(),
 					};
 				}
@@ -990,6 +1085,9 @@ export default function (pi: ExtensionAPI) {
 						ctx.cwd,
 						agents,
 						parentModel,
+						parentThinking,
+						callSelection,
+						{ model: t.model, thinking: t.thinking },
 						t.agent,
 						t.task,
 						t.cwd,
@@ -1026,6 +1124,9 @@ export default function (pi: ExtensionAPI) {
 					ctx.cwd,
 					agents,
 					parentModel,
+					parentThinking,
+					callSelection,
+					{},
 					params.agent,
 					params.task,
 					params.cwd,

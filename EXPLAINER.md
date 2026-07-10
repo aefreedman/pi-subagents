@@ -262,7 +262,8 @@ Base args:
 - `--no-session`
 
 Optional args:
-- `--model <agent.model-or-parent-model>`
+- `--model <resolved-model>`
+- `--thinking <resolved-thinking-level>`
 - `--tools <agent.tools>`
 - `--append-system-prompt <temp-file>`
 
@@ -442,18 +443,29 @@ That means specialization is not only prompt-level.
 
 The child can be constrained operationally as well.
 
-## Model selection behavior
+## Model and thinking selection behavior
 
-If an agent declares `model`, the child Pi process uses that exact model. This is an explicit pin.
+If an agent declares `model`, the child Pi process uses that exact model. This is a hard pin and takes precedence over coordinator selections.
 
-If an agent does not declare `model`, the child inherits the parent Pi session's active provider/model via `--model`. This keeps unpinned agents on the orchestrator's selected model instead of silently falling back to the user's process-level default.
+For unpinned agents, the coordinator may provide:
+
+- call-wide `model` and `thinking` defaults
+- per-item `model` and `thinking` selections in parallel or chain mode
+
+Resolution order is:
+
+- model: agent pin, then per-item selection, then call-wide selection, then parent model
+- thinking: per-item selection, then call-wide selection, then parent thinking level
+
+Coordinator model selections must be exact available `provider/model` identifiers. `subagent_list({ includeModels: true })` exposes that catalog and identifies hard agent model pins; the `subagent` tool rejects unavailable selections before launching child processes. Thinking uses Pi's `off`, `minimal`, `low`, `medium`, `high`, and `xhigh` levels and is passed with `--thinking`; Pi may clamp it to the selected model's capabilities.
 
 This makes it possible to mix:
-- unpinned agents that track the parent session's model
-- faster reconnaissance-style agents pinned to a smaller model subtype
-- more deliberate review/planning agents pinned to a larger model subtype
+- unpinned agents that track the parent session's model and thinking level
+- low-thinking reconnaissance or lint slices
+- higher-thinking architecture, security, or ambiguous implementation slices
+- trusted agent definitions with hard model pins
 
-The result renderer retains the complete model id, including point version and named subtype, for example `gpt-5.6-luna` or `gpt-5.6-sol`.
+The result renderer retains the complete model id, including point version and named subtype, and shows the selected thinking level. Structured result details also retain whether each selection came from the agent pin, task, call, or parent.
 
 ## UI / rendering behavior
 
