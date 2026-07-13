@@ -94,19 +94,19 @@ pi install -l <path-to-pi-subagents>
 
 ## Model and thinking selection
 
-Unpinned agents inherit the parent session's provider/model and Pi thinking level by default. Before selecting a different model, the coordinator can call `subagent_list` with `includeModels: true` to retrieve exact currently available identifiers and see agent model pins. It may then set optional call-wide defaults or per-task selections when a bounded slice has a clear cost, latency, or complexity reason:
+Subagent execution is restricted to the available OpenAI Codex GPT-5.6 variants: `gpt-5.6-luna`, `gpt-5.6-sol`, and `gpt-5.6-terra`. Unpinned agents inherit the parent session's provider/model and Pi thinking level when the parent uses one of those variants. The coordinator can call `subagent_list` with `includeModels: true` to retrieve the exact enabled identifiers that are currently available and see agent model pins. It may then set optional call-wide defaults or per-task selections:
 
 ```text
 subagent({
   tasks: [
-    { agent: "scout", task: "Locate the relevant files.", model: "provider/model-id", thinking: "low" },
-    { agent: "reviewer", task: "Review the narrowed change.", thinking: "high" }
+    { agent: "scout", task: "Locate the relevant files.", model: "openai-codex/gpt-5.6-luna", thinking: "low" },
+    { agent: "reviewer", task: "Review the narrowed change.", model: "openai-codex/gpt-5.6-terra", thinking: "high" }
   ],
   agentScope: "both"
 })
 ```
 
-Model selections must be exact available `provider/model` identifiers. Agent frontmatter `model` declarations remain hard pins and take precedence over coordinator selections. Thinking uses Pi's `off | minimal | low | medium | high | xhigh` levels and may still be clamped by Pi to the selected model's capabilities.
+Model selections and agent frontmatter pins must resolve to an enabled, currently available GPT-5.6 `provider/model` identifier. Agent frontmatter `model` declarations remain hard pins and take precedence over coordinator selections. Thinking uses Pi's `off | minimal | low | medium | high | xhigh` levels and may still be clamped by Pi to the selected model's capabilities.
 
 ## Optional agent frontmatter
 

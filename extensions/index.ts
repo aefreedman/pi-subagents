@@ -33,6 +33,7 @@ import {
 import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../prompting.js";
 import {
 	THINKING_LEVELS,
+	filterAvailableSubagentModels,
 	findUnavailableModelSelections,
 	resolveAgentExecutionProfile,
 	type ExecutionSelection,
@@ -755,7 +756,7 @@ const modelSelectionSchema = () =>
 	Type.Optional(
 		Type.String({
 			minLength: 1,
-			description: "Exact available provider/model for an unpinned agent. Agent frontmatter model pins take precedence.",
+			description: "Exact available GPT-5.6 provider/model for an unpinned agent. Agent frontmatter model pins take precedence.",
 		}),
 	);
 
@@ -807,7 +808,7 @@ const SubagentParams = Type.Object({
 const SubagentListParams = Type.Object({
 	agentScope: Type.Optional(AgentScopeSchema),
 	includeModels: Type.Optional(
-		Type.Boolean({ description: "Include exact currently available provider/model identifiers. Default: false.", default: false }),
+		Type.Boolean({ description: "Include exact currently available GPT-5.6 provider/model identifiers. Default: false.", default: false }),
 	),
 });
 
@@ -828,7 +829,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "subagent_list",
 		label: "Subagent List",
-		description: "List available subagents and, when requested, exact available model identifiers.",
+		description: "List available subagents and, when requested, the enabled GPT-5.6 model identifiers.",
 		promptSnippet: "List available specialist agents before delegating work with the subagent tool.",
 		parameters: SubagentListParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -846,9 +847,11 @@ export default function (pi: ExtensionAPI) {
 					? `\nWarnings (${discovery.warnings.length}): ${warningSummary.text}${warningSummary.remaining > 0 ? `; +${warningSummary.remaining} more` : ""}`
 					: "";
 			const availableModels = params.includeModels
-				? ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`).sort((a, b) => a.localeCompare(b))
+				? filterAvailableSubagentModels(
+						ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`),
+					)
 				: undefined;
-			const modelText = availableModels ? `\nAvailable models (${availableModels.length}): ${availableModels.join(", ") || "none"}` : "";
+			const modelText = availableModels ? `\nAvailable GPT-5.6 models (${availableModels.length}): ${availableModels.join(", ") || "none"}` : "";
 			const text = `${lines.length > 0 ? lines.join("\n") : "No subagents discovered."}${warningText}${modelText}`;
 			return {
 				content: [{ type: "text", text }],
@@ -881,7 +884,7 @@ export default function (pi: ExtensionAPI) {
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
-			"Unpinned agents may use optional exact model and Pi thinking selections per call or per task; otherwise they inherit the parent.",
+			"Subagents are restricted to the enabled GPT-5.6 model variants; unpinned agents otherwise inherit the parent model.",
 			'Default agent scope is "user" (from ~/.pi/agent/agents plus user-installed package agents).',
 			'To enable project-scoped agents from .pi/agents, .pi/subagents.json, or project-installed packages, set agentScope: "both" (or "project").',
 		].join(" "),
@@ -933,16 +936,17 @@ export default function (pi: ExtensionAPI) {
 					(value): value is string => Boolean(value),
 				),
 			);
+			const availableModels = filterAvailableSubagentModels(
+				ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`),
+			);
 			if (requestedModels.size > 0) {
-				const availableModels = ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`);
 				const unavailableModels = findUnavailableModelSelections(Array.from(requestedModels), availableModels);
 				if (unavailableModels.length > 0) {
-					const preview = availableModels.slice(0, 20).join(", ") || "none";
 					return {
 						content: [
 							{
 								type: "text",
-								text: `Unavailable subagent model selection: ${unavailableModels.join(", ")}. Use an exact available provider/model. Available: ${preview}${availableModels.length > 20 ? `, +${availableModels.length - 20} more` : ""}`,
+								text: `Unavailable subagent model selection: ${unavailableModels.join(", ")}. Use an enabled GPT-5.6 provider/model. Available: ${availableModels.join(", ") || "none"}`,
 							},
 						],
 						details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
@@ -958,6 +962,56 @@ export default function (pi: ExtensionAPI) {
 			const requestedAgents = Array.from(requestedAgentNames)
 				.map((name) => agents.find((agent) => agent.name === name))
 				.filter((agent): agent is AgentConfig => Boolean(agent));
+
+			const effectiveModels: string[] = [];
+			const unresolvedModelAgents: string[] = [];
+			const collectEffectiveModel = (agentName: string, taskSelection: ExecutionSelection) => {
+				const agent = agents.find((candidate) => candidate.name === agentName);
+				if (!agent) return;
+				const profile = resolveAgentExecutionProfile({
+					agentModel: agent.model,
+					parentModel,
+					parentThinking,
+					callSelection,
+					taskSelection,
+				});
+				if (profile.model) effectiveModels.push(profile.model);
+				else unresolvedModelAgents.push(agentName);
+			};
+			if (params.chain) {
+				for (const step of params.chain) collectEffectiveModel(step.agent, { model: step.model, thinking: step.thinking });
+			}
+			if (params.tasks) {
+				for (const task of params.tasks) collectEffectiveModel(task.agent, { model: task.model, thinking: task.thinking });
+			}
+			if (params.agent) collectEffectiveModel(params.agent, {});
+
+			if (unresolvedModelAgents.length > 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No subagent model resolved for: ${Array.from(new Set(unresolvedModelAgents)).join(", ")}. Select one of the enabled GPT-5.6 variants: ${availableModels.join(", ") || "none available"}`,
+						},
+					],
+					details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+					isError: true,
+				};
+			}
+
+			const unavailableEffectiveModels = findUnavailableModelSelections(effectiveModels, availableModels);
+			if (unavailableEffectiveModels.length > 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Subagent execution is restricted to enabled GPT-5.6 variants. Resolved unsupported model(s): ${unavailableEffectiveModels.join(", ")}. Available: ${availableModels.join(", ") || "none"}`,
+						},
+					],
+					details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+					isError: true,
+				};
+			}
 
 			const formatTrustEntries = (entries: ProjectAgentTrustSummary[]) =>
 				entries

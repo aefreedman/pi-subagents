@@ -98,11 +98,11 @@ Keep chains short and ensure each step remains bounded.
 
 ## Model and thinking selection
 
-Unpinned agents inherit the parent model and thinking level. Keep that default unless a bounded slice has a clear cost, latency, or complexity reason to differ.
+Subagents may use only the enabled OpenAI Codex GPT-5.6 variants. Unpinned agents inherit the parent model and thinking level when the parent is using one of those variants. Keep that default unless a bounded slice has a clear reason to use a different GPT-5.6 variant.
 
-The root may set call-wide defaults or per-item `model` and `thinking` selections. Before choosing a non-parent model, call `subagent_list` with `includeModels: true`; use one of its exact available `provider/model` identifiers. Pi thinking levels are `off | minimal | low | medium | high | xhigh`.
+The root may set call-wide defaults or per-item `model` and `thinking` selections. Before choosing a non-parent model, call `subagent_list` with `includeModels: true`; use one of the exact GPT-5.6 `provider/model` identifiers it returns. Pi thinking levels are `off | minimal | low | medium | high | xhigh`.
 
-Agent frontmatter model pins are policy boundaries and take precedence. Do not try to override them.
+Agent frontmatter model pins are policy boundaries and take precedence, but pins outside the enabled GPT-5.6 catalog cannot execute. Do not try to override pins.
 
 Reasonable task-sensitive guidance:
 - low or medium: bounded discovery, repository/history searches, and check-only linting

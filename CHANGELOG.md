@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Restricted subagent model discovery and execution to the available OpenAI Codex GPT-5.6 Luna, Sol, and Terra variants.
+
 ## 0.6.1 - 2026-07-10
 
 ### Changed
