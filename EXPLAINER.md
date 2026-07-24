@@ -457,7 +457,7 @@ Resolution order is:
 - model: agent pin, then per-item selection, then call-wide selection, then parent model
 - thinking: per-item selection, then call-wide selection, then parent thinking level
 
-Coordinator model selections must be exact available `provider/model` identifiers. `subagent_list({ includeModels: true })` exposes that catalog and identifies hard agent model pins; the `subagent` tool rejects unavailable selections before launching child processes. Thinking uses Pi's `off`, `minimal`, `low`, `medium`, `high`, and `xhigh` levels and is passed with `--thinking`; Pi may clamp it to the selected model's capabilities.
+Subagent models are restricted to the currently available OpenAI Codex GPT-5.6 variants: `openai-codex/gpt-5.6-luna`, `openai-codex/gpt-5.6-sol`, and `openai-codex/gpt-5.6-terra`. `subagent_list({ includeModels: true })` exposes the available subset of that catalog and identifies hard agent model pins. The `subagent` tool rejects explicit selections, inherited parent models, and agent pins that resolve outside that catalog before launching child processes. Thinking uses Pi's `off`, `minimal`, `low`, `medium`, `high`, and `xhigh` levels and is passed with `--thinking`; Pi may clamp it to the selected model's capabilities.
 
 This makes it possible to mix:
 - unpinned agents that track the parent session's model and thinking level

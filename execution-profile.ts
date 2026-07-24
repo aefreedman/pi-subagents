@@ -1,5 +1,11 @@
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 
+export const GPT_5_6_SUBAGENT_MODELS = [
+	"openai-codex/gpt-5.6-luna",
+	"openai-codex/gpt-5.6-sol",
+	"openai-codex/gpt-5.6-terra",
+] as const;
+
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export type ModelSelectionSource = "agent-pin" | "task" | "call" | "parent";
 export type ThinkingSelectionSource = "task" | "call" | "parent";
@@ -14,6 +20,11 @@ export interface AgentExecutionProfile {
 	modelSource?: ModelSelectionSource;
 	thinking?: ThinkingLevel;
 	thinkingSource?: ThinkingSelectionSource;
+}
+
+export function filterAvailableSubagentModels(available: string[]): string[] {
+	const availableSet = new Set(available);
+	return GPT_5_6_SUBAGENT_MODELS.filter((model) => availableSet.has(model));
 }
 
 export function findUnavailableModelSelections(requested: string[], available: string[]): string[] {

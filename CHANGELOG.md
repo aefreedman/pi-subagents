@@ -1,10 +1,10 @@
 # Changelog
 
-
-## 0.6.2 - 2026-07-24
+## 0.7.0 - 2026-07-24
 
 ### Changed
 
+- Restricted subagent model discovery and execution to the available OpenAI Codex GPT-5.6 Luna, Sol, and Terra variants.
 - Marked Pi-bundled core dependencies as optional peers so Pi git installs do not create redundant per-package `node_modules` directories.
 
 ## 0.6.1 - 2026-07-10

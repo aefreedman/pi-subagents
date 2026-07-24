@@ -98,18 +98,53 @@ Keep chains short and ensure each step remains bounded.
 
 ## Model and thinking selection
 
-Unpinned agents inherit the parent model and thinking level. Keep that default unless a bounded slice has a clear cost, latency, or complexity reason to differ.
+Subagents may use only the enabled OpenAI Codex GPT-5.6 variants. Unpinned agents inherit the parent model and thinking level when the parent is using one of those variants. Keep that default unless a bounded slice has a clear reason to use a different GPT-5.6 variant.
 
-The root may set call-wide defaults or per-item `model` and `thinking` selections. Before choosing a non-parent model, call `subagent_list` with `includeModels: true`; use one of its exact available `provider/model` identifiers. Pi thinking levels are `off | minimal | low | medium | high | xhigh`.
+The root may set call-wide defaults or per-item `model` and `thinking` selections. Before choosing a non-parent model, call `subagent_list` with `includeModels: true`; use one of the exact GPT-5.6 `provider/model` identifiers it returns. Pi thinking levels are `off | minimal | low | medium | high | xhigh`.
 
-Agent frontmatter model pins are policy boundaries and take precedence. Do not try to override them.
+Agent frontmatter model pins are policy boundaries and take precedence, but pins outside the enabled GPT-5.6 catalog cannot execute. Do not try to override pins.
 
-Reasonable task-sensitive guidance:
-- low or medium: bounded discovery, repository/history searches, and check-only linting
-- medium or high: focused planning, flow analysis, and ordinary implementation
-- high or xhigh: genuinely ambiguous architecture, security, data-integrity, or risky resolution work
+### Selection procedure
 
-Do not choose solely from the agent's class or maximize thinking by default. Record why a non-inherited selection is worthwhile, and expect Pi to clamp thinking to model capabilities.
+Choose the model and thinking level separately:
+
+1. Honor any agent model pin.
+2. If inheritance is valid and suitable, inherit. Do not override merely to make the task look optimized.
+3. Otherwise, choose the least expensive model tier that fits the slice's ambiguity, consequence, and required judgment.
+4. Choose the lowest thinking level likely to complete the slice reliably.
+5. If a run fails for capability rather than missing context or poor task shaping, retry by increasing one dimension at a time. Improve the task prompt before spending more model effort when the scope or success criteria were unclear.
+
+### Choose a GPT-5.6 variant
+
+- **Luna** (`gpt-5.6-luna`): efficient, high-volume work with explicit instructions and easy verification. Prefer it for bounded reconnaissance, file or history searches, extraction, classification, formatting, check-only validation, and repetitive mechanical edits. Avoid it for ambiguous design choices or consequential review.
+- **Terra** (`gpt-5.6-terra`): the default balance of capability and cost. Prefer it for ordinary implementation, focused debugging, flow analysis, planning, test writing, documentation, and routine code review when Luna would leave meaningful judgment to chance.
+- **Sol** (`gpt-5.6-sol`): frontier capability for complex professional work. Prefer it when the result depends on resolving ambiguity across systems, making architectural tradeoffs, finding subtle defects, or handling security, data integrity, migrations, concurrency, or other high-consequence concerns.
+
+Task volume alone favors Luna; task complexity and consequence favor Terra or Sol. A small but dangerous change can warrant Sol, while a large batch of independent, mechanical checks can still warrant Luna.
+
+### Choose a Pi thinking level
+
+- `off`: only for direct, non-reasoning transformations where the expected output is effectively specified by the input. Do not use it for investigation, tool-driven work, or implementation.
+- `minimal`: extraction, routing, formatting, and other nearly mechanical tasks with an immediate correctness check.
+- `low`: bounded discovery, repository or history searches, simple validation, and small well-specified edits.
+- `medium`: the default for ordinary implementation, debugging, analysis, and tool-using work.
+- `high`: multi-file reasoning, non-obvious debugging, planning with tradeoffs, or reviews where omissions matter.
+- `xhigh`: rare, quality-first work with genuine ambiguity or high consequence, such as difficult architecture, security, data-integrity, or risky migration decisions.
+
+Pi may clamp a requested thinking level to the selected model's capabilities. Do not maximize thinking by default: higher levels increase latency and usage and should buy a plausible quality improvement for this specific slice.
+
+### Recommended combinations
+
+- `Luna + minimal/low`: repetitive extraction, routing, search, and mechanical verification.
+- `Luna + medium`: bounded implementation only when the task is explicit and strongly testable.
+- `Terra + medium`: general default for delegated execution.
+- `Terra + high`: complex implementation, debugging, planning, or review that needs sustained judgment.
+- `Sol + high`: ambiguous, cross-system, or consequential professional work.
+- `Sol + xhigh`: exceptional quality-first work where failure is costly and extra deliberation is justified.
+
+If Luna appears to need `high` or `xhigh` because the task itself is complex, prefer evaluating Terra or Sol instead. Reserve `xhigh` for hard tasks, not vague prompts; first narrow the scope and state the evidence, constraints, output shape, and stop condition.
+
+When selecting a non-inherited combination, record a brief task-specific reason. Base recurring defaults on observed task success, latency, and usage rather than model labels alone. OpenAI's current GPT-5.6 guidance likewise recommends starting from a balanced effort and increasing it only where representative evaluations show a gain: https://developers.openai.com/api/docs/guides/latest-model
 
 ## Practical heuristics
 

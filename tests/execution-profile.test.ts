@@ -1,6 +1,10 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { findUnavailableModelSelections, resolveAgentExecutionProfile } from "../execution-profile.ts";
+import {
+	filterAvailableSubagentModels,
+	findUnavailableModelSelections,
+	resolveAgentExecutionProfile,
+} from "../execution-profile.ts";
 
 const inherited = resolveAgentExecutionProfile({
 	parentModel: "provider/parent",
@@ -60,9 +64,25 @@ assert.deepEqual(
 	["provider/missing"],
 );
 
+assert.deepEqual(
+	filterAvailableSubagentModels([
+		"anthropic/claude-sonnet",
+		"openai-codex/gpt-5.6-terra",
+		"openai-codex/gpt-5.6-luna",
+		"openai/gpt-5.6-sol",
+		"openai-codex/gpt-5.6-sol",
+	]),
+	[
+		"openai-codex/gpt-5.6-luna",
+		"openai-codex/gpt-5.6-sol",
+		"openai-codex/gpt-5.6-terra",
+	],
+);
+
 const extensionSource = readFileSync(new URL("../extensions/index.ts", import.meta.url), "utf8");
 assert(extensionSource.includes('args.push("--thinking", executionProfile.thinking)'), "Expected child Pi thinking selection.");
 assert(extensionSource.includes("ctx.modelRegistry.getAvailable()"), "Expected coordinator model selections to be availability-checked.");
+assert(extensionSource.includes("filterAvailableSubagentModels"), "Expected subagent models to use the GPT-5.6 allowlist.");
 assert(extensionSource.includes("includeModels"), "Expected opt-in available-model discovery for coordinators.");
 
 console.log("pi-subagents execution profile tests passed");
