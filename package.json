@@ -1,7 +1,7 @@
 {
   "name": "@aefree/pi-subagents",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.6.2",
   "type": "module",
   "keywords": [
     "pi-package"
@@ -33,5 +33,22 @@
   "bugs": {
     "url": "https://github.com/aefreedman/pi-subagents/issues"
   },
-  "homepage": "https://github.com/aefreedman/pi-subagents#readme"
+  "homepage": "https://github.com/aefreedman/pi-subagents#readme",
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-agent-core": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  }
 }
