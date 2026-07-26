@@ -14,7 +14,15 @@ import {
   registerWorkflowRuntimeServicesV1,
 } from "@aefree/pi-workflow/runtime/v1";
 import {
+  buildDelegatedChildEnv,
+  DELEGATION_DEPTH_ENV,
+  DELEGATION_PARENT_AGENT_ENV,
+  DELEGATION_ROOT_AGENT_ENV,
+  getDelegationContext,
+} from "../delegation-context.ts";
+import {
   createSubagentExecutionRuntimeV1,
+  executeUserScopedSubagentsV1,
   registerSubagentExecutionRuntimeV1,
 } from "../workflow-runtime.ts";
 import { findVerifiedPiCliLauncher } from "../pi-launcher.ts";
@@ -43,6 +51,39 @@ function options(marker = "fixture") {
 }
 
 try {
+  // Delegated children receive monotonic depth metadata shared by every execution path.
+  const childEnv = buildDelegatedChildEnv("reviewer", {
+    [DELEGATION_DEPTH_ENV]: "2",
+    [DELEGATION_ROOT_AGENT_ENV]: "scout",
+  });
+  assert.deepEqual(getDelegationContext(childEnv), {
+    depth: 3,
+    rootAgent: "scout",
+    parentAgent: "reviewer",
+  });
+
+  // The generic workflow runtime must fail closed inside a delegated child too,
+  // rather than bypassing the interactive subagent tool's nested-call guard.
+  const previousDepth = process.env[DELEGATION_DEPTH_ENV];
+  const previousRoot = process.env[DELEGATION_ROOT_AGENT_ENV];
+  const previousParent = process.env[DELEGATION_PARENT_AGENT_ENV];
+  try {
+    process.env[DELEGATION_DEPTH_ENV] = "1";
+    process.env[DELEGATION_ROOT_AGENT_ENV] = "scout";
+    process.env[DELEGATION_PARENT_AGENT_ENV] = "reviewer";
+    const blocked = await executeUserScopedSubagentsV1(
+      {} as never,
+      { mode: "single", tasks: [{ agent: "general", task: "Do not run" }], signal: new AbortController().signal },
+      { command: process.execPath, argsPrefix: [], source: "injected" },
+    );
+    assert.equal(blocked.outcome, "blocked");
+    assert.equal(blocked.results.length, 0);
+  } finally {
+    if (previousDepth === undefined) delete process.env[DELEGATION_DEPTH_ENV]; else process.env[DELEGATION_DEPTH_ENV] = previousDepth;
+    if (previousRoot === undefined) delete process.env[DELEGATION_ROOT_AGENT_ENV]; else process.env[DELEGATION_ROOT_AGENT_ENV] = previousRoot;
+    if (previousParent === undefined) delete process.env[DELEGATION_PARENT_AGENT_ENV]; else process.env[DELEGATION_PARENT_AGENT_ENV] = previousParent;
+  }
+
   // No viable child launcher means no registration; directories alone also retain sequential fallback.
   const unavailableScope = {};
   assert.equal(registerSubagentExecutionRuntimeV1(unavailableScope, { packageRoot, registeredBy: "unavailable" }).runtime, undefined);

@@ -10,6 +10,7 @@ import {
 } from "@aefree/pi-workflow/contracts/v1";
 import { WORKFLOW_RUNTIME_SCOPE_SYMBOL_V1 } from "@aefree/pi-workflow/runtime/v1";
 import { discoverAgents, type AgentConfig } from "./agents.js";
+import { buildDelegatedChildEnv, getDelegationContext } from "./delegation-context.js";
 import { findVerifiedPiCliLauncher, normalizeInjectedPiLauncher, piInvocation, type PiLauncher } from "./pi-launcher.js";
 import { GPT_5_6_SUBAGENT_MODELS } from "./execution-profile.js";
 import { buildSubagentSystemPrompt, validateOutputContract } from "./prompting.js";
@@ -110,7 +111,9 @@ export async function executeUserScopedSubagentsV1(
   request: RuntimeRequest,
   launcher: PiLauncher | undefined = findVerifiedPiCliLauncher(),
 ): Promise<SubagentRuntimeResult> {
-  if (request.signal.aborted) return Object.freeze({ outcome: "blocked", mode: request.mode, results: Object.freeze([]) });
+  if (request.signal.aborted || getDelegationContext().depth > 0) {
+    return Object.freeze({ outcome: "blocked", mode: request.mode, results: Object.freeze([]) });
+  }
   validateRequest(request);
   if (launcher === undefined) return Object.freeze({ outcome: "blocked", mode: request.mode, results: Object.freeze([]) });
   // Generic workflow calls cannot present Pi's project-trust confirmation UI.
@@ -166,7 +169,8 @@ async function executeOne(agent: AgentConfig, task: RuntimeTask, context: Workfl
   try {
     const args = ["--mode", "json", "-p", "--no-session"];
     if (agent.model) args.push("--model", agent.model);
-    if (agent.tools?.length) args.push("--tools", agent.tools.join(","));
+    const filteredTools = agent.tools?.filter((tool) => tool !== "subagent" && tool !== "subagent_list");
+    if (filteredTools?.length) args.push("--tools", filteredTools.join(","));
     const systemPrompt = buildSubagentSystemPrompt(agent);
     if (systemPrompt.trim()) {
       temporaryDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-subagent-runtime-"));
@@ -189,16 +193,6 @@ async function executeOne(agent: AgentConfig, task: RuntimeTask, context: Workfl
 
 function aggregate(mode: RuntimeMode, results: readonly SubagentRuntimeResult["results"][number][]): SubagentRuntimeResult {
   return Object.freeze({ outcome: results.every((result) => result.outcome === "completed") ? "completed" : "failed", mode, results: Object.freeze([...results]) });
-}
-
-function buildDelegatedChildEnv(agentName: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const depth = Number.parseInt(env.PI_SUBAGENT_DELEGATION_DEPTH ?? "0", 10);
-  return {
-    ...env,
-    PI_SUBAGENT_DELEGATION_DEPTH: String(Number.isFinite(depth) && depth > 0 ? depth + 1 : 1),
-    PI_SUBAGENT_ROOT_AGENT: env.PI_SUBAGENT_ROOT_AGENT || agentName,
-    PI_SUBAGENT_PARENT_AGENT: agentName,
-  };
 }
 
 async function spawnPi(invocation: { command: string; args: string[] }, cwd: string, signal: AbortSignal, env: NodeJS.ProcessEnv): Promise<{ exitCode: number; wasAborted: boolean; finalOutput: string }> {

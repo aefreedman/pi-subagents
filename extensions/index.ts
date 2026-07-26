@@ -30,6 +30,7 @@ import {
 	formatAgentDiscoveryWarnings,
 	formatAgentSourceTag,
 } from "../agents.js";
+import { buildDelegatedChildEnv, getDelegationContext } from "../delegation-context.js";
 import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../prompting.js";
 import {
 	THINKING_LEVELS,
@@ -54,37 +55,6 @@ import { registerSubagentExecutionRuntimeV1 } from "../workflow-runtime.js";
 const MAX_PARALLEL_TASKS = 12;
 const MAX_CONCURRENCY = 12;
 const COLLAPSED_ITEM_COUNT = 10;
-const DELEGATION_DEPTH_ENV = "PI_SUBAGENT_DELEGATION_DEPTH";
-const DELEGATION_ROOT_AGENT_ENV = "PI_SUBAGENT_ROOT_AGENT";
-const DELEGATION_PARENT_AGENT_ENV = "PI_SUBAGENT_PARENT_AGENT";
-
-interface DelegationContext {
-	depth: number;
-	rootAgent: string | null;
-	parentAgent: string | null;
-}
-
-function getDelegationContext(env: NodeJS.ProcessEnv = process.env): DelegationContext {
-	const rawDepth = env[DELEGATION_DEPTH_ENV];
-	const parsedDepth = rawDepth ? Number.parseInt(rawDepth, 10) : 0;
-	return {
-		depth: Number.isFinite(parsedDepth) && parsedDepth > 0 ? parsedDepth : 0,
-		rootAgent: env[DELEGATION_ROOT_AGENT_ENV] || null,
-		parentAgent: env[DELEGATION_PARENT_AGENT_ENV] || null,
-	};
-}
-
-function buildDelegatedChildEnv(agentName: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-	const parentContext = getDelegationContext(env);
-	const depth = parentContext.depth + 1;
-	const rootAgent = parentContext.rootAgent || agentName;
-	return {
-		...env,
-		[DELEGATION_DEPTH_ENV]: String(depth),
-		[DELEGATION_ROOT_AGENT_ENV]: rootAgent,
-		[DELEGATION_PARENT_AGENT_ENV]: agentName,
-	};
-}
 
 function getNestedDelegationBlock(toolName: "subagent" | "subagent_list") {
 	const context = getDelegationContext();

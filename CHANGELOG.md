@@ -18,6 +18,7 @@
 - Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
 - Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.
 - Resolve package agents from the invocation's current session scope for listing, trust-gated tool execution, and workflow runtime execution.
+- Block nested delegation through both interactive tools and the generic workflow runtime, with shared depth propagation and delegated-tool filtering.
 
 ## 0.7.0 - 2026-07-24
 
