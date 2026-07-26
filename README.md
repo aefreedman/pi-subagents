@@ -10,6 +10,7 @@ For a deeper implementation and runtime walkthrough, see `EXPLAINER.md`.
 - tool: `subagent_list`
 - bundled fallback agent: `general`
 - skill: `using-subagents`
+- one session-scoped `AgentExecutionRuntimeV1` only when an injected launcher or a positively verified Pi CLI host is available
 
 ## Intended audience
 
@@ -37,8 +38,11 @@ Pi packages do not natively expose `agents/` directories.
 This package supports a small package-agent contract:
 
 - canonical agent definitions stay as Markdown files under `agents/`
-- a package ships a small extension that registers its `agents/` directory at runtime
-- `pi-subagents` discovers those registered package directories and classifies them as user-global or project-scoped based on install context
+- a package ships a small extension that registers its `agents/` directory on `session_start` and unregisters its exact token on `session_shutdown`
+- registrations live in a versioned registry keyed by `ctx.sessionManager`; snapshots are immutable and separate SDK loaders cannot see one another's package sets
+- registration provenance comes from the physical package manifest (name, version, canonical root, and registration source)
+- `pi-subagents` discovers only the current session's package directories and classifies them as user-global or project-scoped based on install context
+- physical/cross-owner duplicate names or source files remain visible as discovery diagnostics rather than silently winning by load order
 
 Recommended package shape:
 
@@ -58,6 +62,12 @@ Discovery precedence is:
 3. project-installed package agent dirs
 4. user-global `~/.pi/agent/agents/`
 5. user-installed package agent dirs
+
+## Workflow delegation runtime
+
+When `@aefree/pi-workflow` is installed, this extension registers one callable `AgentExecutionRuntimeV1` on `session_start` and unregisters its exact registration token on shutdown or reload. The runtime uses the package manifest's actual name/version and physical package root; it does not capture Pi session objects in its callback. Registration occurs only with an explicitly injected launcher or when the process's active script is positively verified as the `@earendil-works/pi-coding-agent` manifest's CLI bin. Arbitrary Node SDK/test scripts and unverified PATH commands are never treated as Pi, so those hosts remain sequential and cannot spawn themselves.
+
+Generic workflow calls execute only user-scoped agents with an explicit supported GPT-5.6 model pin, because they cannot present Pi's interactive project-agent trust prompt or safely inherit a parent model. Project-scoped agent execution and normal parent-model inheritance remain available through the `subagent` tool, which performs the trust gate. If Pi cannot launch a child process, no runtime is registered and `pi-workflow` truthfully remains in sequential mode. Agent-definition directories by themselves never enable delegation.
 
 ## Project-agent trust
 

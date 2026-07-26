@@ -29,8 +29,10 @@ function writeAgentDefinition(dir: string, fileName: string, content: string): v
   fs.writeFileSync(path.join(dir, fileName), content);
 }
 
+const sessionScope = {};
+
 function agentByName(cwd: string, scope: "user" | "project" | "both", agentDir: string, globalSettingsPath: string, name: string) {
-  const result = discoverAgents(cwd, scope, { agentDir, globalSettingsPath });
+  const result = discoverAgents(cwd, scope, { agentDir, globalSettingsPath, sessionScope });
   return result.agents.find((agent) => agent.name === name);
 }
 
@@ -75,18 +77,16 @@ try {
   const userPackageRoot = path.join(tempRoot, "packages", "user-pack");
   writeAgent(path.join(userPackageRoot, "agents"), "shared", "user-package shared");
   writeAgent(path.join(userPackageRoot, "agents"), "user-package-only", "user-package unique");
-  writeJson(path.join(userPackageRoot, "package.json"), { name: "user-pack" });
-  registerPackageAgentDir({
+  writeJson(path.join(userPackageRoot, "package.json"), { name: "user-pack", version: "1.0.0" });
+  registerPackageAgentDir(sessionScope, {
     agentDir: path.join(userPackageRoot, "agents"),
     packageRoot: userPackageRoot,
-    packageName: "user-pack",
     registeredBy: "test",
   });
   const bundledPackageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  registerPackageAgentDir({
+  registerPackageAgentDir(sessionScope, {
     agentDir: path.join(bundledPackageRoot, "agents"),
     packageRoot: bundledPackageRoot,
-    packageName: "pi-subagents",
     registeredBy: "test-bundled",
   });
   writeJson(globalSettingsPath, { packages: [userPackageRoot, bundledPackageRoot] });
@@ -94,11 +94,10 @@ try {
   const projectPackageRoot = path.join(tempRoot, "packages", "project-pack");
   writeAgent(path.join(projectPackageRoot, "agents"), "shared", "project-package shared");
   writeAgent(path.join(projectPackageRoot, "agents"), "project-package-only", "project-package unique");
-  writeJson(path.join(projectPackageRoot, "package.json"), { name: "project-pack" });
-  registerPackageAgentDir({
+  writeJson(path.join(projectPackageRoot, "package.json"), { name: "project-pack", version: "1.0.0" });
+  registerPackageAgentDir(sessionScope, {
     agentDir: path.join(projectPackageRoot, "agents"),
     packageRoot: projectPackageRoot,
-    packageName: "project-pack",
     registeredBy: "test",
   });
 
@@ -138,7 +137,7 @@ try {
   assert(projectConfigOnly, "Expected project config-path agent to be discoverable");
   assert.equal(projectConfigOnly.sourceDetail, "project-config-path");
 
-  const discoveryWithWarnings = discoverAgents(projectRoot, "both", { agentDir: userPiDir, globalSettingsPath });
+  const discoveryWithWarnings = discoverAgents(projectRoot, "both", { agentDir: userPiDir, globalSettingsPath, sessionScope });
   assert.equal(
     discoveryWithWarnings.projectRoot?.replace(/\\/g, "/"),
     fs.realpathSync.native(projectRoot).replace(/\\/g, "/"),
@@ -146,7 +145,7 @@ try {
   );
   const nestedProjectCwd = path.join(projectRoot, "src", "nested");
   ensureDir(nestedProjectCwd);
-  const nestedDiscovery = discoverAgents(nestedProjectCwd, "both", { agentDir: userPiDir, globalSettingsPath });
+  const nestedDiscovery = discoverAgents(nestedProjectCwd, "both", { agentDir: userPiDir, globalSettingsPath, sessionScope });
   assert.equal(
     nestedDiscovery.projectRoot?.replace(/\\/g, "/"),
     discoveryWithWarnings.projectRoot?.replace(/\\/g, "/"),
@@ -213,7 +212,7 @@ try {
   const bundledGeneral = agentByName(projectRoot, "user", userPiDir, globalSettingsPath, "general");
   assert(bundledGeneral, "Expected bundled general agent to be discoverable");
   assert.equal(bundledGeneral.sourceDetail, "user-package");
-  assert.equal(bundledGeneral.packageName, "pi-subagents");
+  assert.equal(bundledGeneral.packageName, "@aefree/pi-subagents");
 
   const cwdUnderHome = path.join(tempRoot, "home", "scratch", "nested");
   ensureDir(cwdUnderHome);

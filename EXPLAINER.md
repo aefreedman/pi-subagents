@@ -165,11 +165,12 @@ Pi itself does not yet have a built-in package manifest slot for `agents/` direc
 
 The package-level contract used here is therefore:
 - keep canonical agent definitions as Markdown files under `agents/`
-- ship a tiny extension that registers that directory with the shared `pi-subagents` package-agent registry
-- let `pi-subagents` classify the registered package directory as `user-package` or `project-package` based on install context
+- ship a tiny extension that registers that directory on `session_start` and unregisters its exact token on `session_shutdown`
+- record the physical package manifest's actual name, version, canonical root, and registration source
+- let `pi-subagents` classify only the current session's registered package directory as `user-package` or `project-package` based on install context
 - `pi-subagents` uses the same contract for its own bundled `agents/` directory, which currently provides the fallback `general` agent
 
-The shared registry lives on `globalThis`, so separate extension packages loaded into the same Pi runtime can cooperate without requiring Pi-native package-agent support.
+The versioned protocol root lives on `globalThis`, while registration state is held in weak maps keyed by `ctx.sessionManager`. This lets independently installed physical copies interoperate structurally without leaking definitions between concurrent SDK loaders. Snapshots and records are immutable, exact tokens make reload cleanup stale-safe and idempotent, and cross-owner duplicate names/sources are reported as discovery diagnostics.
 
 ### Agent body
 

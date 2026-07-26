@@ -42,12 +42,14 @@ import {
 	type ThinkingSelectionSource,
 } from "../execution-profile.js";
 import { registerPackageAgentDir } from "../registry.js";
+import { findVerifiedPiCliLauncher, piInvocation } from "../pi-launcher.js";
 import {
 	ProjectAgentTrustGate,
 	type ProjectAgentTrustResult,
 	type ProjectAgentTrustSummary,
 } from "../project-agent-trust.js";
 import { waitForChildExit } from "./child-process.js";
+import { registerSubagentExecutionRuntimeV1 } from "../workflow-runtime.js";
 
 const MAX_PARALLEL_TASKS = 12;
 const MAX_CONCURRENCY = 12;
@@ -491,18 +493,11 @@ async function writePromptToTempFile(agentName: string, prompt: string): Promise
 }
 
 function getPiInvocation(args: string[]): { command: string; args: string[] } {
-	const currentScript = process.argv[1];
-	if (currentScript && fs.existsSync(currentScript)) {
-		return { command: process.execPath, args: [currentScript, ...args] };
+	const launcher = findVerifiedPiCliLauncher();
+	if (launcher === undefined) {
+		throw new Error("Delegated execution requires a verified @earendil-works/pi-coding-agent CLI host.");
 	}
-
-	const execName = path.basename(process.execPath).toLowerCase();
-	const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
-	if (!isGenericRuntime) {
-		return { command: process.execPath, args };
-	}
-
-	return { command: "pi", args };
+	return piInvocation(launcher, args);
 }
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
@@ -812,19 +807,37 @@ const SubagentListParams = Type.Object({
 	),
 });
 
-function registerBundledAgents(): void {
+function registerBundledAgents(scope: object) {
 	const currentFile = fileURLToPath(import.meta.url);
 	const packageRoot = path.resolve(path.dirname(currentFile), "..");
-	registerPackageAgentDir({
+	return registerPackageAgentDir(scope, {
 		agentDir: path.join(packageRoot, "agents"),
 		packageRoot,
-		packageName: "pi-subagents",
 		registeredBy: currentFile,
 	});
 }
 
 export default function (pi: ExtensionAPI) {
-	registerBundledAgents();
+	const currentFile = fileURLToPath(import.meta.url);
+	const packageRoot = path.resolve(path.dirname(currentFile), "..");
+	let packageAgentRegistration: ReturnType<typeof registerPackageAgentDir> | undefined;
+	let workflowRuntimeRegistration: ReturnType<typeof registerSubagentExecutionRuntimeV1> | undefined;
+	pi.on("session_start", async (_event, ctx) => {
+		// Exact tokens make old-extension shutdowns and repeated cleanup harmless.
+		packageAgentRegistration?.unregister();
+		workflowRuntimeRegistration?.unregister();
+		packageAgentRegistration = registerBundledAgents(ctx.sessionManager);
+		workflowRuntimeRegistration = registerSubagentExecutionRuntimeV1(ctx.sessionManager, {
+			packageRoot,
+			registeredBy: currentFile,
+		});
+	});
+	pi.on("session_shutdown", async () => {
+		packageAgentRegistration?.unregister();
+		workflowRuntimeRegistration?.unregister();
+		packageAgentRegistration = undefined;
+		workflowRuntimeRegistration = undefined;
+	});
 	const projectAgentTrustGate = new ProjectAgentTrustGate();
 	pi.registerTool({
 		name: "subagent_list",
@@ -836,7 +849,7 @@ export default function (pi: ExtensionAPI) {
 			const nestedBlock = getNestedDelegationBlock("subagent_list");
 			if (nestedBlock) return nestedBlock;
 			const agentScope: AgentScope = params.agentScope ?? "user";
-			const discovery = discoverAgents(ctx.cwd, agentScope);
+			const discovery = discoverAgents(ctx.cwd, agentScope, { sessionScope: ctx.sessionManager });
 			const lines = discovery.agents.map((agent) => {
 				const modelPin = agent.model ? ` [model pin: ${agent.model}]` : "";
 				return `- ${agent.name} (${formatAgentSourceTag(agent)})${modelPin} - ${agent.description}`;
@@ -894,7 +907,7 @@ export default function (pi: ExtensionAPI) {
 			const nestedBlock = getNestedDelegationBlock("subagent");
 			if (nestedBlock) return nestedBlock;
 			const agentScope: AgentScope = params.agentScope ?? "user";
-			const discovery = discoverAgents(ctx.cwd, agentScope);
+			const discovery = discoverAgents(ctx.cwd, agentScope, { sessionScope: ctx.sessionManager });
 			const agents = discovery.agents;
 			const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
 			const parentThinking = pi.getThinkingLevel() as ThinkingLevel;

@@ -21,7 +21,9 @@ export type AgentClass = "research" | "review" | "workflow" | "planning" | "impl
 export type AgentDiscoveryWarningCode =
 	| "unsupported-frontmatter-fields"
 	| "empty-tools-declaration"
-	| "malformed-tools-declaration";
+	| "malformed-tools-declaration"
+	| "duplicate-agent-name"
+	| "duplicate-agent-source";
 
 export interface AgentDiscoveryWarning {
 	code: AgentDiscoveryWarningCode;
@@ -32,6 +34,8 @@ export interface AgentDiscoveryWarning {
 	sourceDetail: AgentSourceDetail;
 	packageName?: string;
 	fields?: string[];
+	relatedPackageName?: string;
+	relatedFilePath?: string;
 }
 
 export interface AgentConfig {
@@ -58,12 +62,14 @@ export interface AgentDiscoveryResult {
 	projectRoot: string | null;
 	projectAgentsDir: string | null;
 	projectConfigAgentDirs: string[];
-	registeredPackageAgentDirs: RegisteredPackageAgentDir[];
+	registeredPackageAgentDirs: readonly RegisteredPackageAgentDir[];
 }
 
 export interface AgentDiscoveryOptions {
 	agentDir?: string;
 	globalSettingsPath?: string;
+	/** The current Pi session manager. Package agents never leak across scopes. */
+	sessionScope?: object;
 }
 
 function isDirectory(targetPath: string): boolean {
@@ -433,7 +439,7 @@ function classifyRegisteredPackageDir(
 ): { source: AgentSource; sourceDetail: AgentSourceDetail } {
 	const projectPiDir = findNearestProjectPiDir(cwd, userPiDir);
 	const projectRoot = projectPiDir ? path.dirname(projectPiDir) : null;
-	const packageRoot = normalizeExistingPath(entry.packageRoot);
+	const packageRoot = normalizeExistingPath(entry.owner.packageRoot);
 
 	if (projectPiDir) {
 		const projectSettingsRoots = resolveSettingsLocalPackageRoots(path.join(projectPiDir, "settings.json"));
@@ -475,7 +481,7 @@ function loadRegisteredPackageAgents(
 } {
 	const userPiDir = options.agentDir ?? getDefaultAgentDir();
 	const globalSettingsPath = options.globalSettingsPath ?? path.join(userPiDir, "settings.json");
-	const entries = getRegisteredPackageAgentDirs();
+	const entries = options.sessionScope === undefined ? [] : [...getRegisteredPackageAgentDirs(options.sessionScope)];
 	const userAgents: AgentConfig[] = [];
 	const projectAgents: AgentConfig[] = [];
 	const warnings: AgentDiscoveryWarning[] = [];
@@ -486,9 +492,9 @@ function loadRegisteredPackageAgents(
 		if (scope === "project" && classification.source !== "project") continue;
 
 		const loaded = loadAgentsFromDirRecursive(entry.agentDir, classification.source, classification.sourceDetail, {
-			packageName: entry.packageName,
-			packageRoot: entry.packageRoot,
-			discoveredFrom: entry.registeredBy ?? entry.agentDir,
+			packageName: entry.owner.packageName,
+			packageRoot: entry.owner.packageRoot,
+			discoveredFrom: entry.owner.registeredBy,
 		});
 
 		warnings.push(...loaded.warnings);
@@ -519,7 +525,9 @@ export function formatAgentDiscoveryWarnings(
 						? `unsupported fields ${(warning.fields ?? []).join(", ")}`
 						: warning.code === "empty-tools-declaration"
 							? "empty tools declaration"
-							: "malformed tools declaration";
+							: warning.code === "malformed-tools-declaration"
+								? "malformed tools declaration"
+								: warning.message;
 				return `${warning.agentName} (${formatAgentSourceTag(warning)}): ${detail}`;
 			})
 			.join("; "),
@@ -571,11 +579,37 @@ export function discoverAgents(cwd: string, scope: AgentScope, options: AgentDis
 		}
 	}
 
+	const allAgents = orderedGroups.flat();
+	const duplicateWarnings: AgentDiscoveryWarning[] = [];
+	for (let index = 0; index < allAgents.length; index++) {
+		const agent = allAgents[index]!;
+		for (let otherIndex = 0; otherIndex < index; otherIndex++) {
+			const other = allAgents[otherIndex]!;
+			if (!agent.packageName || !other.packageName) continue;
+			if (agent.packageName === other.packageName && agent.packageRoot && other.packageRoot && samePath(agent.packageRoot, other.packageRoot)) continue;
+			const sameSource = samePath(agent.filePath, other.filePath);
+			if (agent.name !== other.name && !sameSource) continue;
+			duplicateWarnings.push({
+				code: sameSource ? "duplicate-agent-source" : "duplicate-agent-name",
+				message: sameSource
+					? `Agent source is registered by both ${other.packageName} and ${agent.packageName}.`
+					: `Agent name '${agent.name}' is supplied by both ${other.packageName} and ${agent.packageName}.`,
+				filePath: agent.filePath,
+				agentName: agent.name,
+				source: agent.source,
+				sourceDetail: agent.sourceDetail,
+				packageName: agent.packageName,
+				relatedPackageName: other.packageName,
+				relatedFilePath: other.filePath,
+			});
+		}
+	}
 	const warnings = [
 		...registeredPackageAgents.warnings,
 		...userLocalDiscovery.warnings,
 		...projectConfigDiscoveries.flatMap((discovery) => discovery.warnings),
 		...projectLocalDiscovery.warnings,
+		...duplicateWarnings,
 	].sort((a, b) => a.filePath.localeCompare(b.filePath) || a.code.localeCompare(b.code));
 
 	return {

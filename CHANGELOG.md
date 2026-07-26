@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Registered a session-scoped, stale-safe `AgentExecutionRuntimeV1` for `@aefree/pi-workflow` only with an injected launcher or positively verified Pi CLI host.
+- Added bounded user-scoped single, parallel, and chain execution for generic workflow delegation; project-scoped agents remain on the interactive trust-gated tool path.
+- Added a versioned session-scoped package-agent registry with immutable snapshots, physical manifest provenance, cross-owner duplicate diagnostics, and stale-token/idempotent cleanup.
+- Added isolated-loader, reload, disabled-package, physical-copy, provenance, no-leakage, and verified-launcher/ordinary-Node tests.
+
+### Changed
+
+- Co-install workflow and capability-registry tarballs for packed runtime tests instead of recursively bundling decomposition repositories.
+
+### Fixed
+
+- Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
+- Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.
+- Resolve package agents from the invocation's current session scope for listing, trust-gated tool execution, and workflow runtime execution.
+
 ## 0.7.0 - 2026-07-24
 
 ### Changed
