@@ -77,9 +77,9 @@ try {
     const before = registerWorkflowRuntimeServicesV1(scope, { packageRoot: root, registeredBy: "workflow" });
     const service = (await import("@aefree/pi-workflow/contracts/v1")).resolveWorkflowServiceV1(scope).records[0]!;
     const context = createScopedWorkflowExecutionContextV1(scope, root, new AbortController().signal);
-    assert.equal((await service.execute(context, { workflow: "plan", targetPaths: [], operation: "read" })).details.mode, "sequential");
+    assert.equal((await service.preflight(context, { workflow: "plan", targetPaths: [], operation: "read" })).details.mode, "sequential");
     const registration = registerSubagentExecutionRuntimeV1(scope, options("reverse-order"));
-    assert.equal((await service.execute(context, { workflow: "plan", targetPaths: [], operation: "read" })).details.mode, "delegation_available");
+    assert.equal((await service.preflight(context, { workflow: "plan", targetPaths: [], operation: "read" })).details.mode, "delegation_available");
     registration.unregister();
     before.unregister();
   } finally {
