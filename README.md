@@ -18,7 +18,8 @@ This README is for humans installing or maintaining the package. Use the `using-
 
 - when to use `scout` vs `general`
 - how to shape delegated tasks so they stay bounded
-- when to use single, parallel, or chain delegation
+- the Default-mode one-specialist review budget and direct verification after remediation
+- when to use single, parallel, or chain delegation without using delegation to activate a workflow
 
 ## Discovery model
 

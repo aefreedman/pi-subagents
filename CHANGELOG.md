@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added a tested bounded-review delegation contract: Default mode permits at most one justified specialist, requires root-session focused verification after remediation, and reserves parallel review for distinct concerns with Thorough mode or a user checkpoint.
+
 - Registered a session-scoped, stale-safe `AgentExecutionRuntimeV1` for `@aefree/pi-workflow` only with an injected launcher or positively verified Pi CLI host.
 - Added bounded user-scoped single, parallel, and chain execution for generic workflow delegation; project-scoped agents remain on the interactive trust-gated tool path.
 - Added a versioned session-scoped package-agent registry with immutable snapshots, physical manifest provenance, cross-owner duplicate diagnostics, and stale-token/idempotent cleanup.
@@ -15,6 +17,7 @@
 
 ### Fixed
 
+- Clarified that delegation guidance cannot activate or select a packaged workflow; explicit workflow intent remains with the user and active prompt.
 - Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
 - Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.
 - Resolve package agents from the invocation's current session scope for listing, trust-gated tool execution, and workflow runtime execution.
