@@ -50,7 +50,7 @@ import {
 	type ProjectAgentTrustSummary,
 } from "../project-agent-trust.js";
 import { waitForChildExit } from "./child-process.js";
-import { registerSubagentExecutionRuntimeV1 } from "../workflow-runtime.js";
+import { registerOptionalSubagentExecutionRuntimeV1 } from "../optional-workflow-runtime.js";
 
 const MAX_PARALLEL_TASKS = 12;
 const MAX_CONCURRENCY = 12;
@@ -791,13 +791,14 @@ export default function (pi: ExtensionAPI) {
 	const currentFile = fileURLToPath(import.meta.url);
 	const packageRoot = path.resolve(path.dirname(currentFile), "..");
 	let packageAgentRegistration: ReturnType<typeof registerPackageAgentDir> | undefined;
-	let workflowRuntimeRegistration: ReturnType<typeof registerSubagentExecutionRuntimeV1> | undefined;
+	let workflowRuntimeRegistration: Readonly<{ unregister: () => boolean }> | undefined;
 	pi.on("session_start", async (_event, ctx) => {
 		// Exact tokens make old-extension shutdowns and repeated cleanup harmless.
 		packageAgentRegistration?.unregister();
 		workflowRuntimeRegistration?.unregister();
 		packageAgentRegistration = registerBundledAgents(ctx.sessionManager);
-		workflowRuntimeRegistration = registerSubagentExecutionRuntimeV1(ctx.sessionManager, {
+		// Keep direct delegation loadable when the optional workflow contracts are absent.
+		workflowRuntimeRegistration = await registerOptionalSubagentExecutionRuntimeV1(ctx.sessionManager, {
 			packageRoot,
 			registeredBy: currentFile,
 		});

@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Kept core discovery, trust-gated direct delegation, `subagent`, and `subagent_list` loadable without the optional `@aefree/pi-workflow` package; present-but-broken workflow imports now remain visible.
 - Clarified that delegation guidance cannot activate or select a packaged workflow; explicit workflow intent remains with the user and active prompt.
 - Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
 - Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.

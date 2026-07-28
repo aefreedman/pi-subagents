@@ -15,14 +15,17 @@
     ]
   },
   "scripts": {
-    "test": "npx --yes tsx tests/using-subagents-skill.test.ts && npx --yes tsx tests/agent-discovery.test.ts && npx --yes tsx tests/package-agent-registry.test.ts && npx --yes tsx tests/execution-profile.test.ts && npx --yes tsx tests/project-agent-trust.test.ts && npx --yes tsx tests/child-process.test.ts && npx --yes tsx tests/workflow-runtime.test.ts && npx --yes tsx tests/packed-workflow-runtime.test.ts",
+    "test": "npx --yes tsx tests/using-subagents-skill.test.ts && npx --yes tsx tests/agent-discovery.test.ts && npx --yes tsx tests/package-agent-registry.test.ts && npx --yes tsx tests/execution-profile.test.ts && npx --yes tsx tests/project-agent-trust.test.ts && npx --yes tsx tests/child-process.test.ts && npx --yes tsx tests/optional-workflow-runtime.test.ts && npx --yes tsx tests/workflow-runtime.test.ts && npx --yes tsx tests/packed-workflow-runtime.test.ts",
     "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
-    "@aefree/pi-capability-registry": "^0.1.0",
+    "@aefree/pi-capability-registry": "^0.1.0"
+  },
+  "devDependencies": {
     "@aefree/pi-workflow": "^0.1.0"
   },
   "peerDependencies": {
+    "@aefree/pi-workflow": "^0.1.0",
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-agent-core": "*",
     "@earendil-works/pi-coding-agent": "*",
@@ -53,6 +56,9 @@
       "optional": true
     },
     "typebox": {
+      "optional": true
+    },
+    "@aefree/pi-workflow": {
       "optional": true
     }
   }
