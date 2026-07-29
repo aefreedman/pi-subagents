@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- Clarified that delegation guidance cannot activate or select a packaged workflow; explicit workflow intent remains with the user and active prompt.
+- Removed packaged-prompt activation policy from delegation guidance; the skill now stays focused on root-session task shaping, review depth, trust, and execution mechanics.
 - Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
 - Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.
 - Resolve package agents from the invocation's current session scope for listing and trust-gated tool execution.

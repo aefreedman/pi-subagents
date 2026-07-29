@@ -11,11 +11,10 @@ Purpose: root/orchestrator guidance for effective delegated workflows with `pi-s
 - Only the root/orchestrator session should call `subagent` or `subagent_list`.
 - Delegated workers must return handoffs instead of spawning more subagents.
 - Nested delegation is blocked at runtime, so do not plan workflows that rely on recursive spawning.
-- Delegation mechanics do not select or activate `/plan`, `/work`, `/review`, or any other packaged workflow. Use them only after the user explicitly invokes or unmistakably requests that workflow; agent availability and task similarity are not workflow intent.
 
 ## Bounded review delegation
 
-Apply this section only after an active work task has selected a review depth; it does not independently select a workflow or depth.
+Apply this section when the controlling task has selected a review depth.
 
 - In Default mode, delegate at most one matching specialist review, and only when a concrete review trigger justifies it. Reviewer availability is not a trigger.
 - Select the specialist for the single most relevant concern. Choose model and thinking level only after that delegation is justified.

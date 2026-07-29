@@ -7,8 +7,7 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const skill = fs.readFileSync(path.join(packageRoot, "skills", "using-subagents", "SKILL.md"), "utf8");
 
 const requiredContract = [
-  "Delegation mechanics do not select or activate `/plan`, `/work`, `/review`, or any other packaged workflow.",
-  "agent availability and task similarity are not workflow intent.",
+  "Apply this section when the controlling task has selected a review depth.",
   "In Default mode, delegate at most one matching specialist review",
   "Reviewer availability is not a trigger.",
   "Choose model and thinking level only after that delegation is justified.",
@@ -21,5 +20,7 @@ const requiredContract = [
 for (const requirement of requiredContract) {
   assert(skill.includes(requirement), `Expected using-subagents guidance to include: ${requirement}`);
 }
+
+assert(!/`\/(?:plan|work|review)`|packaged workflow|workflow intent/.test(skill), "Delegation skill must not couple itself to packaged prompt activation policy.");
 
 console.log("pi-subagents bounded delegation skill contract tests passed");
