@@ -6,23 +6,17 @@
 
 - Added a tested bounded-review delegation contract: Default mode permits at most one justified specialist, requires root-session focused verification after remediation, and reserves parallel review for distinct concerns with Thorough mode or a user checkpoint.
 
-- Registered a session-scoped, stale-safe `AgentExecutionRuntimeV1` for `@aefree/pi-workflow` only with an injected launcher or positively verified Pi CLI host.
-- Added bounded user-scoped single, parallel, and chain execution for generic workflow delegation; project-scoped agents remain on the interactive trust-gated tool path.
+- Removed the `@aefree/pi-workflow` execution-runtime bridge; direct `subagent` delegation remains trust-gated and independently owned by this package.
 - Added a versioned session-scoped package-agent registry with immutable snapshots, physical manifest provenance, cross-owner duplicate diagnostics, and stale-token/idempotent cleanup.
-- Added isolated-loader, reload, disabled-package, physical-copy, provenance, no-leakage, and verified-launcher/ordinary-Node tests.
-
-### Changed
-
-- Co-install workflow and capability-registry tarballs for packed runtime tests instead of recursively bundling decomposition repositories.
+- Added isolated-loader, reload, disabled-package, provenance, and no-leakage tests for package-agent discovery and registration.
 
 ### Fixed
 
-- Kept core discovery, trust-gated direct delegation, `subagent`, and `subagent_list` loadable without the optional `@aefree/pi-workflow` package; present-but-broken workflow imports now remain visible.
 - Clarified that delegation guidance cannot activate or select a packaged workflow; explicit workflow intent remains with the user and active prompt.
 - Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
 - Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.
-- Resolve package agents from the invocation's current session scope for listing, trust-gated tool execution, and workflow runtime execution.
-- Block nested delegation through both interactive tools and the generic workflow runtime, with shared depth propagation and delegated-tool filtering.
+- Resolve package agents from the invocation's current session scope for listing and trust-gated tool execution.
+- Block nested delegation through interactive tools with shared depth propagation and delegated-tool filtering.
 
 ## 0.7.0 - 2026-07-24
 

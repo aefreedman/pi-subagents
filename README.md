@@ -10,7 +10,6 @@ For a deeper implementation and runtime walkthrough, see `EXPLAINER.md`.
 - tool: `subagent_list`
 - bundled fallback agent: `general`
 - skill: `using-subagents`
-- one session-scoped `AgentExecutionRuntimeV1` only when an injected launcher or a positively verified Pi CLI host is available
 
 ## Intended audience
 
@@ -63,12 +62,6 @@ Discovery precedence is:
 3. project-installed package agent dirs
 4. user-global `~/.pi/agent/agents/`
 5. user-installed package agent dirs
-
-## Workflow delegation runtime
-
-`@aefree/pi-workflow` is optional: without it, `subagent`, `subagent_list`, discovery, and project-agent trust gates still load normally, while only workflow runtime registration is skipped. When it is installed, this extension registers one callable `AgentExecutionRuntimeV1` on `session_start` and unregisters its exact registration token on shutdown or reload. An installed workflow package with broken or incompatible contracts fails visibly rather than being treated as absent. The runtime uses the package manifest's actual name/version and physical package root; it does not capture Pi session objects in its callback. Registration occurs only with an explicitly injected launcher or when the process's active script is positively verified as the `@earendil-works/pi-coding-agent` manifest's CLI bin. Arbitrary Node SDK/test scripts and unverified PATH commands are never treated as Pi, so those hosts remain sequential and cannot spawn themselves.
-
-Generic workflow calls execute only user-scoped agents with an explicit supported GPT-5.6 model pin, because they cannot present Pi's interactive project-agent trust prompt or safely inherit a parent model. Project-scoped agent execution and normal parent-model inheritance remain available through the `subagent` tool, which performs the trust gate. If Pi cannot launch a child process, no runtime is registered and `pi-workflow` truthfully remains in sequential mode. Agent-definition directories by themselves never enable delegation.
 
 ## Project-agent trust
 
