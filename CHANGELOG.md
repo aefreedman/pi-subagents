@@ -18,6 +18,7 @@
 ### Fixed
 
 - Canonicalize physical agent-source paths before duplicate provenance checks so aliases are detected consistently across Windows, macOS, and Linux.
+- Validate missing forwarded-extension paths lexically before physical canonicalization so cross-platform path aliases do not misclassify an in-project missing file as an escape.
 - Removed packaged-prompt activation policy from delegation guidance; the skill now stays focused on root-session task shaping, review depth, trust, and execution mechanics.
 - Attribute the bundled `general` agent directory to the scoped package name `@aefree/pi-subagents`.
 - Prevent ordinary Node SDK and test hosts from treating `process.argv[1]` as Pi and recursively spawning themselves.

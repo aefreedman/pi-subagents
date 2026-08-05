@@ -71,18 +71,23 @@ export function resolveChildExtensions(cwd: string): ChildExtensionConfig {
 	}
 
 	const settingsDir = path.dirname(settingsPath);
+	const lexicalProjectRoot = path.dirname(settingsDir);
 	const extensions: string[] = [];
 	const seen = new Set<string>();
 	for (const entry of childExtensions) {
 		if (typeof entry !== "string" || !entry.trim()) {
 			throw new Error(`Every 'piSubagents.childExtensions' entry in '${settingsPath}' must be a non-empty path string.`);
 		}
-		const resolved = canonicalPath(path.resolve(settingsDir, entry.trim()));
-		if (!isWithin(projectRoot, resolved)) {
+		const candidate = path.resolve(settingsDir, entry.trim());
+		if (!isWithin(lexicalProjectRoot, candidate)) {
 			throw new Error(`Child extension '${entry}' resolves outside the trusted project root '${projectRoot}'.`);
 		}
-		if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+		if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
 			throw new Error(`Child extension '${entry}' does not resolve to an existing file.`);
+		}
+		const resolved = canonicalPath(candidate);
+		if (!isWithin(projectRoot, resolved)) {
+			throw new Error(`Child extension '${entry}' resolves outside the trusted project root '${projectRoot}'.`);
 		}
 		if (!EXTENSION_FILE_PATTERN.test(resolved)) {
 			throw new Error(`Child extension '${entry}' must resolve to a .ts, .js, .mts, .mjs, .cts, or .cjs file.`);
