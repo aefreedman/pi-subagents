@@ -97,7 +97,7 @@ function normalizeForCompare(targetPath: string): string {
 }
 
 function samePath(a: string, b: string): boolean {
-	return normalizeForCompare(a) === normalizeForCompare(b);
+	return normalizeForCompare(normalizeExistingPath(a)) === normalizeForCompare(normalizeExistingPath(b));
 }
 
 function isSubPath(parentPath: string, childPath: string): boolean {
