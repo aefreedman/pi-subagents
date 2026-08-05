@@ -3,9 +3,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { discoverAgents, formatAgentDiscoveryWarnings } from "../agents.ts";
-import { buildDelegationPacket } from "../prompting.ts";
-import { clearRegisteredPackageAgentDirsForTests, registerPackageAgentDir } from "../registry.ts";
+import { discoverAgents, formatAgentDiscoveryWarnings } from "../src/agents.ts";
+import { buildDelegationPacket } from "../src/prompting.ts";
+import { clearRegisteredPackageAgentDirsForTests, registerPackageAgentDir } from "../src/registry.ts";
 
 function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });

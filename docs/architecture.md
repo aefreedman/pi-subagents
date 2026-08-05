@@ -263,10 +263,13 @@ Base args:
 - `--no-session`
 
 Optional args:
+- `-e <project-configured-child-extension>` (repeated)
 - `--model <resolved-model>`
 - `--thinking <resolved-thinking-level>`
 - `--tools <agent.tools>`
 - `--append-system-prompt <temp-file>`
+
+The nearest trusted project's `.pi/settings.json` may declare `piSubagents.childExtensions`. Paths are resolved relative to that `.pi` directory, canonicalized, deduplicated, and restricted to at most 16 existing extension files physically inside the project root. Invalid or untrusted forwarding configuration fails before process launch. Agent definitions and `subagent` tool arguments cannot supply extension paths.
 
 Runtime guard behavior:
 - child invocations carry delegation-depth metadata in the environment

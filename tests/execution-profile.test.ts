@@ -4,7 +4,7 @@ import {
 	filterAvailableSubagentModels,
 	findUnavailableModelSelections,
 	resolveAgentExecutionProfile,
-} from "../execution-profile.ts";
+} from "../src/execution-profile.ts";
 
 const inherited = resolveAgentExecutionProfile({
 	parentModel: "provider/parent",

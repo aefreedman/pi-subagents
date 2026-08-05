@@ -2,13 +2,13 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { discoverAgents } from "../agents.ts";
+import { discoverAgents } from "../src/agents.ts";
 import {
   clearRegisteredPackageAgentDirsForTests,
   createPackageAgentDirRegistryV1,
   getRegisteredPackageAgentDirs,
   registerPackageAgentDir,
-} from "../registry.ts";
+} from "../src/registry.ts";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-package-agent-registry-"));
 const makePackage = (directory: string, name: string, agentName: string) => {

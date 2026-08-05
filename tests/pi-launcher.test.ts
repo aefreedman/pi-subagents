@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findVerifiedPiCliLauncher, piInvocation } from "../pi-launcher.ts";
+import { findVerifiedPiCliLauncher, piInvocation } from "../src/pi-launcher.ts";
 
 assert.equal(findVerifiedPiCliLauncher([process.execPath, fileURLToPath(import.meta.url)], process.execPath), undefined, "ordinary Node scripts must not be treated as Pi CLI hosts");
 

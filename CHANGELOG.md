@@ -1,14 +1,19 @@
 # Changelog
 
-## Unreleased
+## [0.8.0] - 2026-08-05
 
 ### Added
 
+- Added trusted project-scoped child extension forwarding through bounded `piSubagents.childExtensions` entries in `.pi/settings.json`; resolved files are passed to delegated Pi processes with explicit `-e` arguments regardless of child working directory.
 - Added a tested bounded-review delegation contract: Default mode permits at most one justified specialist, requires root-session focused verification after remediation, and reserves parallel review for distinct concerns with Thorough mode or a user checkpoint.
-
-- Removed the `@aefree/pi-workflow` execution-runtime bridge; direct `subagent` delegation remains trust-gated and independently owned by this package.
 - Added a versioned session-scoped package-agent registry with immutable snapshots, physical manifest provenance, cross-owner duplicate diagnostics, and stale-token/idempotent cleanup.
 - Added isolated-loader, reload, disabled-package, provenance, and no-leakage tests for package-agent discovery and registration.
+
+### Changed
+
+- Removed the `@aefree/pi-workflow` execution-runtime bridge; direct `subagent` delegation remains trust-gated and independently owned by this package.
+- Organized runtime implementation under `src/`, moved the public architecture walkthrough under `docs/`, and limited the npm artifact to runtime resources and public package documentation.
+- Prepared public npm metadata, registry-resolved dependency locking, cross-platform validation, and resumable trusted-publishing automation.
 
 ### Fixed
 

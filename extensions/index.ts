@@ -29,9 +29,10 @@ import {
 	discoverAgents,
 	formatAgentDiscoveryWarnings,
 	formatAgentSourceTag,
-} from "../agents.js";
-import { buildDelegatedChildEnv, getDelegationContext } from "../delegation-context.js";
-import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../prompting.js";
+} from "../src/agents.js";
+import { childExtensionCliArgs, resolveChildExtensions } from "../src/child-extensions.js";
+import { buildDelegatedChildEnv, getDelegationContext } from "../src/delegation-context.js";
+import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../src/prompting.js";
 import {
 	THINKING_LEVELS,
 	filterAvailableSubagentModels,
@@ -41,14 +42,14 @@ import {
 	type ModelSelectionSource,
 	type ThinkingLevel,
 	type ThinkingSelectionSource,
-} from "../execution-profile.js";
-import { registerPackageAgentDir } from "../registry.js";
-import { findVerifiedPiCliLauncher, piInvocation } from "../pi-launcher.js";
+} from "../src/execution-profile.js";
+import { registerPackageAgentDir } from "../src/registry.js";
+import { findVerifiedPiCliLauncher, piInvocation } from "../src/pi-launcher.js";
 import {
 	ProjectAgentTrustGate,
 	type ProjectAgentTrustResult,
 	type ProjectAgentTrustSummary,
-} from "../project-agent-trust.js";
+} from "../src/project-agent-trust.js";
 import { waitForChildExit } from "./child-process.js";
 
 const MAX_PARALLEL_TASKS = 12;
@@ -241,6 +242,7 @@ interface SubagentDetails {
 	projectRoot: string | null;
 	projectAgentsDir: string | null;
 	projectAgentTrust?: ProjectAgentTrustResult;
+	forwardedExtensions: string[];
 	results: SingleResult[];
 }
 
@@ -483,6 +485,7 @@ async function runSingleAgent(
 	cwd: string | undefined,
 	step: number | undefined,
 	mode: "single" | "parallel" | "chain",
+	childExtensions: readonly string[],
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
@@ -506,7 +509,7 @@ async function runSingleAgent(
 		};
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+	const args: string[] = ["--mode", "json", "-p", "--no-session", ...childExtensionCliArgs(childExtensions)];
 	const executionProfile = resolveAgentExecutionProfile({
 		agentModel: agent.model,
 		parentModel,
@@ -873,6 +876,27 @@ export default function (pi: ExtensionAPI) {
 			const parentThinking = pi.getThinkingLevel() as ThinkingLevel;
 			const callSelection: ExecutionSelection = { model: params.model, thinking: params.thinking };
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+			let forwardedExtensions: string[] = [];
+			try {
+				const childExtensionConfig = resolveChildExtensions(ctx.cwd);
+				forwardedExtensions = childExtensionConfig.extensions;
+				if (forwardedExtensions.length > 0 && !ctx.isProjectTrusted()) {
+					throw new Error(`Refusing to load project-configured child extensions because '${childExtensionConfig.projectRoot}' is not trusted by Pi.`);
+				}
+			} catch (error) {
+				return {
+					content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+					details: {
+						mode: params.chain?.length ? "chain" : params.tasks?.length ? "parallel" : "single",
+						agentScope,
+						projectRoot: discovery.projectRoot,
+						projectAgentsDir: discovery.projectAgentsDir,
+						forwardedExtensions: [],
+						results: [],
+					},
+					isError: true,
+				};
+			}
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -888,6 +912,7 @@ export default function (pi: ExtensionAPI) {
 					projectRoot: discovery.projectRoot,
 					projectAgentsDir: discovery.projectAgentsDir,
 					projectAgentTrust,
+					forwardedExtensions,
 					results,
 				});
 
@@ -1071,6 +1096,7 @@ export default function (pi: ExtensionAPI) {
 						step.cwd,
 						i + 1,
 						"chain",
+						forwardedExtensions,
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
@@ -1163,6 +1189,7 @@ export default function (pi: ExtensionAPI) {
 						t.cwd,
 						undefined,
 						"parallel",
+						forwardedExtensions,
 						signal,
 						// Per-task update callback
 						(partial) => {
@@ -1202,6 +1229,7 @@ export default function (pi: ExtensionAPI) {
 					params.cwd,
 					undefined,
 					"single",
+					forwardedExtensions,
 					signal,
 					onUpdate,
 					makeDetails("single"),

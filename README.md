@@ -2,7 +2,7 @@
 
 Pi extension package for delegated specialist workflows.
 
-For a deeper implementation and runtime walkthrough, see `EXPLAINER.md`.
+For a deeper implementation and runtime walkthrough, see [`docs/architecture.md`](docs/architecture.md).
 
 ## What this package provides
 
@@ -30,6 +30,22 @@ This README is for humans installing or maintaining the package. Use the `using-
 - project-local agent definitions in `.pi/agents/`
 - additional project-declared agent directories from `.pi/subagents.json`
 - project-local package agent directories registered by project-installed packages
+
+## Child extension forwarding
+
+A trusted project can forward a bounded list of safety or workflow extensions into every delegated child Pi process, even when a task selects another working directory. Add explicit extension files to the nearest `.pi/settings.json`:
+
+```json
+{
+  "piSubagents": {
+    "childExtensions": [
+      "../pi-plastic/extensions/bash-cm-diff-guard.ts"
+    ]
+  }
+}
+```
+
+Paths resolve relative to the `.pi/settings.json` directory and must resolve to existing extension files physically contained by that project root. Directories, package specs, paths outside the project, malformed configuration, more than 16 files, and configuration from a project Pi has not trusted are rejected before a child launches. Each resolved file is forwarded with an explicit `-e` argument; agent frontmatter and tool-call arguments cannot add extension paths.
 
 ## Package agent contract
 
@@ -78,10 +94,16 @@ Because `.pi/agents/` and `.pi/subagents.json` are package conventions rather th
 
 ## Install
 
+From npm:
+
+```bash
+pi install npm:@aefree/pi-subagents
+```
+
 From GitHub:
 
 ```bash
-pi install git:git@github.com:aefreedman/pi-subagents.git
+pi install git:github.com/aefreedman/pi-subagents@v0.8.0
 ```
 
 Local development install:
@@ -114,7 +136,7 @@ Model selections and agent frontmatter pins must resolve to an enabled, currentl
 
 ## Optional agent frontmatter
 
-Supported optional frontmatter fields include `class`, `output_format`, `required_sections`, and `strictness`. See `EXPLAINER.md` and `skills/using-subagents/SKILL.md` for details.
+Supported optional frontmatter fields include `class`, `output_format`, `required_sections`, and `strictness`. See [`docs/architecture.md`](docs/architecture.md) and `skills/using-subagents/SKILL.md` for details.
 
 ## Testing
 

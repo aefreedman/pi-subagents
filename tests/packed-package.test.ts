@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const workspaceRoot = path.resolve(packageRoot, "..");
+const registryRoot = path.join(packageRoot, "node_modules", "@aefree", "pi-capability-registry");
 const npmCli = process.env.npm_execpath ?? path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
 
 function npm(args: string[], cwd: string): string {
@@ -24,8 +24,8 @@ const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "pi-subagents-packed-
 try {
 	const archives = path.join(temporaryRoot, "archives");
 	await mkdir(archives);
-	const tarballs = ["pi-capability-registry", "pi-subagents"].map((directory) => {
-		const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", archives], path.join(workspaceRoot, directory))) as Array<{ filename: string; bundled?: string[] }>;
+	const tarballs = [registryRoot, packageRoot].map((directory) => {
+		const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", archives], directory)) as Array<{ filename: string; bundled?: string[] }>;
 		assert.equal(packed.length, 1);
 		assert.equal((packed[0]!.bundled ?? []).length, 0);
 		return path.join(archives, packed[0]!.filename);
@@ -46,7 +46,7 @@ try {
 	const manifest = JSON.parse(await readFile(path.join(subagentRoot, "package.json"), "utf8"));
 	assert.equal(JSON.stringify(manifest).includes("pi-workflow"), false, "packed package must not advertise the retired workflow bridge");
 	const extension = await import(pathToFileURL(path.join(subagentRoot, "extensions", "index.ts")).href);
-	const registry = await import(pathToFileURL(path.join(subagentRoot, "registry.ts")).href);
+	const registry = await import(pathToFileURL(path.join(subagentRoot, "src", "registry.ts")).href);
 	const handlers = new Map<string, Function>();
 	const tools: string[] = [];
 	const sessionManager = {};

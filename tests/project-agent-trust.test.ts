@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import type { AgentConfig } from "../agents.ts";
-import { ProjectAgentTrustGate } from "../project-agent-trust.ts";
+import type { AgentConfig } from "../src/agents.ts";
+import { ProjectAgentTrustGate } from "../src/project-agent-trust.ts";
 
 function agent(
 	name: string,
