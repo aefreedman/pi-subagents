@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.1] - 2026-08-08
+
+### Changed
+
+- Centralized delegated-child Pi argument construction and added regression coverage confirming children retain Pi's normal global, project, package, and settings-based skill and extension discovery while trusted project extensions continue to be forwarded explicitly.
+
 ## [0.8.0] - 2026-08-05
 
 ### Added

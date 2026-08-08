@@ -103,7 +103,7 @@ pi install npm:@aefree/pi-subagents
 From GitHub:
 
 ```bash
-pi install git:github.com/aefreedman/pi-subagents@v0.8.0
+pi install git:github.com/aefreedman/pi-subagents@v0.8.1
 ```
 
 Local development install:

@@ -48,7 +48,7 @@ try {
 	assert.deepEqual(resolveChildExtensions(nestedCwd).extensions, []);
 
 	const extensionSource = fs.readFileSync(new URL("../extensions/index.ts", import.meta.url), "utf8");
-	assert.match(extensionSource, /childExtensionCliArgs\(childExtensions\)/, "child Pi arguments must include resolved extension forwarding flags");
+	assert.match(extensionSource, /buildChildBaseArgs\(childExtensions\)/, "child Pi arguments must include resolved extension forwarding flags");
 	assert.match(extensionSource, /forwardedExtensions\.length > 0 && !ctx\.isProjectTrusted\(\)/, "project-configured child extensions must require Pi project trust");
 } finally {
 	fs.rmSync(container, { recursive: true, force: true });

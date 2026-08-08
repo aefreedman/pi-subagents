@@ -30,7 +30,8 @@ import {
 	formatAgentDiscoveryWarnings,
 	formatAgentSourceTag,
 } from "../src/agents.js";
-import { childExtensionCliArgs, resolveChildExtensions } from "../src/child-extensions.js";
+import { resolveChildExtensions } from "../src/child-extensions.js";
+import { buildChildBaseArgs } from "../src/child-invocation.js";
 import { buildDelegatedChildEnv, getDelegationContext } from "../src/delegation-context.js";
 import { buildDelegationPacket, buildSubagentSystemPrompt, validateOutputContract } from "../src/prompting.js";
 import {
@@ -509,7 +510,7 @@ async function runSingleAgent(
 		};
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session", ...childExtensionCliArgs(childExtensions)];
+	const args = buildChildBaseArgs(childExtensions);
 	const executionProfile = resolveAgentExecutionProfile({
 		agentModel: agent.model,
 		parentModel,
