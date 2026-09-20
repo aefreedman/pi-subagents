@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+## [0.8.2] - 2026-09-20
+
 ### Changed
 
 - Pin development validation dependencies to Pi 0.86.1 while retaining optional wildcard peers for Pi-provided runtime packages.
+- Declare and lock the TypeScript test runner so release validation does not fetch an undeclared tool.
 
 ## [0.8.1] - 2026-08-08
 
